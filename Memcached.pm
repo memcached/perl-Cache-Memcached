@@ -134,7 +134,16 @@ sub _connect_sock { # sock, sin, timeout
     my ($sock, $sin, $timeout) = @_;
     $timeout ||= 0.25;
 
-    IO::Handle::blocking($sock, 1) unless $timeout;
+    # make the socket non-blocking from now on,
+    # except if someone wants 0 timeout, meaning
+    # a blocking connect, but even then turn it
+    # non-blocking at the end of this function
+
+    if ($timeout) {
+        IO::Handle::blocking($sock, 0);
+    } else {
+        IO::Handle::blocking($sock, 1);
+    }
 
     my $ret = connect($sock, $sin);
 
@@ -150,7 +159,13 @@ sub _connect_sock { # sock, sin, timeout
         }
     }
 
-    IO::Handle::blocking($sock, 0);
+    unless ($timeout) { # socket was temporarily blocking, now revert
+        IO::Handle::blocking($sock, 0);
+    }
+
+    # from here on, we use non-blocking (async) IO for the duration
+    # of the socket's life
+
     return $ret;
 }
 
