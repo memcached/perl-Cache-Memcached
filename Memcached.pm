@@ -43,6 +43,8 @@ eval { $FLAG_NOSIGNAL = MSG_NOSIGNAL; };
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
 
+my $PROTO_TCP;
+
 our $SOCK_TIMEOUT = 2.6; # default timeout in seconds
 
 sub new {
@@ -205,10 +207,11 @@ sub sock_to_host { # (host)
 
     my $connected = 0;
     my $sin;
+    my $proto = $PROTO_TCP ||= getprotobyname('tcp');
 
     # if a preferred IP is known, try that first.
     if ($self && $self->{pref_ip}{$ip}) {
-        socket($sock, PF_INET, SOCK_STREAM, IPPROTO_TCP);
+        socket($sock, PF_INET, SOCK_STREAM, $proto);
         my $prefip = $self->{pref_ip}{$ip};
         $sin = Socket::sockaddr_in($port,Socket::inet_aton($prefip));
         if (_connect_sock($sock,$sin,0.1)) {
@@ -220,7 +223,7 @@ sub sock_to_host { # (host)
 
     # normal path, or fallback path if preferred IP failed
     unless ($connected) {
-        socket($sock, PF_INET, SOCK_STREAM, IPPROTO_TCP);
+        socket($sock, PF_INET, SOCK_STREAM, $proto);
         $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
         unless (_connect_sock($sock,$sin)) {
             return _dead_sock($sock, undef, 20 + int(rand(10)));
