@@ -268,7 +268,7 @@ sub get {
 }
 
 sub get_multi {
-    my $self = $_[0];
+    my $self = shift;
     return undef unless $self->{'active'};
     $self->{'stats'}->{"get_multi"}++;
     my %val;        # what we'll be returning a reference to (realkey -> value)
