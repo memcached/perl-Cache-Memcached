@@ -1,6 +1,13 @@
+2004-03-05 (Dave Evans <danga-20040305@djce.org.uk>)
+	* Here's a really trivial patch for the Perl binding,
+	Cache::Memcached.  The bug is that the module assumes that the
+	currently select()ed filehandle is STDOUT, but this might not be
+	the case.  So this patch ensures that the select()ed filehandle is
+	preserved, not forced to STDOUT.
+
 2004-02-29 (Brad)
 	* add readonly option
-	
+
 2004-02-27 (Avva)
 	* Cleaner handling of the case when _oneline is called without a
 	  line parameter (i.e. not to send anything, just read a line from

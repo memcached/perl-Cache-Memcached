@@ -174,9 +174,9 @@ sub sock_to_host { # (host)
         unless _connect_sock($sock,$sin);
 
     # make the new socket not buffer writes.
-    select($sock);
+    my $old = select($sock);
     $| = 1;
-    select(STDOUT);
+    select($old);
 
     return $cache_sock{$host} = $sock;
 }
