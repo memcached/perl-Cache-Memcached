@@ -3,3 +3,4 @@ Memcached.pm
 Makefile.PL
 MANIFEST
 TODO
+t/use.t
