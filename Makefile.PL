@@ -4,6 +4,7 @@ WriteMakefile( 'NAME' => 'Cache::Memcached',
                'PREREQ_PM'		=> {
                    'Storable' => 0,
                    'Time::HiRes' => 0,
+                   'String::CRC32' => 0,
                },
                ($] >= 5.005 ?
                 (ABSTRACT_FROM => 'Memcached.pm',

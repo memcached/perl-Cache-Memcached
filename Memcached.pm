@@ -13,6 +13,7 @@ use Storable ();
 use Socket qw( MSG_NOSIGNAL PF_INET IPPROTO_TCP SOCK_STREAM );
 use IO::Handle ();
 use Time::HiRes ();
+use String::CRC32;
 use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 
 use fields qw{
@@ -739,11 +740,7 @@ sub _load_multi {
 }
 
 sub _hashfunc {
-    my $hash = 0;
-    foreach (split //, shift) {
-        $hash = $hash*33 + ord($_);
-    }
-    return $hash;
+    return (crc32(shift) >> 16) & 0x7fff;
 }
 
 # returns array of lines, or () on failure.
