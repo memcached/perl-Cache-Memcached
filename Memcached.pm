@@ -15,6 +15,13 @@ use IO::Handle ();
 use Time::HiRes ();
 use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 
+use fields qw{
+    debug no_rehash stats compress_threshold compress_enable stat_callback
+    readonly select_timeout namespace namespace_len servers active buckets
+    bucketcount _single_sock _stime
+};
+
+
 # flag definitions
 use constant F_STORABLE => 1;
 use constant F_COMPRESS => 2;
@@ -40,9 +47,10 @@ my $PROTO_TCP;
 our $SOCK_TIMEOUT = 2.6; # default timeout in seconds
 
 sub new {
-    my ($class, $args) = @_;
-    my $self = {};
-    bless $self, ref $class || $class;
+    my Cache::Memcached $self = shift;
+    $self = fields::new( $self ) unless ref $self;
+
+    my ($args) = @_;
 
     $self->set_servers($args->{'servers'});
     $self->{'debug'} = $args->{'debug'};
@@ -55,12 +63,15 @@ sub new {
 
     # TODO: undocumented
     $self->{'select_timeout'} = $args->{'select_timeout'} || 1.0;
+    $self->{namespace} = $args->{namespace} || '';
+    $self->{namespace_len} = length $self->{namespace};
 
     return $self;
 }
 
 sub set_servers {
-    my ($self, $list) = @_;
+    my Cache::Memcached $self = shift;
+    my ($list) = @_;
     $self->{'servers'} = $list || [];
     $self->{'active'} = scalar @{$self->{'servers'}};
     $self->{'buckets'} = undef;
@@ -75,27 +86,32 @@ sub set_servers {
 }
 
 sub set_debug {
-    my ($self, $dbg) = @_;
+    my Cache::Memcached $self = shift;
+    my ($dbg) = @_;
     $self->{'debug'} = $dbg;
 }
 
 sub set_readonly {
-    my ($self, $ro) = @_;
+    my Cache::Memcached $self = shift;
+    my ($ro) = @_;
     $self->{'readonly'} = $ro;
 }
 
 sub set_norehash {
-    my ($self, $val) = @_;
+    my Cache::Memcached $self = shift;
+    my ($val) = @_;
     $self->{'no_rehash'} = $val;
 }
 
 sub set_compress_threshold {
-    my ($self, $thresh) = @_;
+    my Cache::Memcached $self = shift;
+    my ($thresh) = @_;
     $self->{'compress_threshold'} = $thresh;
 }
 
 sub enable_compress {
-    my ($self, $enable) = @_;
+    my Cache::Memcached $self = shift;
+    my ($enable) = @_;
     $self->{'compress_enable'} = $enable;
 }
 
@@ -104,7 +120,8 @@ sub forget_dead_hosts {
 }
 
 sub set_stat_callback {
-    my ($self, $stat_callback) = @_;
+    my Cache::Memcached $self = shift;
+    my ($stat_callback) = @_;
     $self->{'stat_callback'} = $stat_callback;
 }
 
@@ -196,7 +213,8 @@ sub sock_to_host { # (host)
 }
 
 sub get_sock { # (key)
-    my ($self, $key) = @_;
+    my Cache::Memcached $self = shift;
+    my ($key) = @_;
     return sock_to_host($self->{'_single_sock'}) if $self->{'_single_sock'};
     return undef unless $self->{'active'};
     my $hv = ref $key ? int($key->[0]) : _hashfunc($key);
@@ -216,7 +234,7 @@ sub get_sock { # (key)
 }
 
 sub init_buckets {
-    my ($self) = @_;
+    my Cache::Memcached $self = shift;
     return if $self->{'buckets'};
     my $bu = $self->{'buckets'} = [];
     foreach my $v (@{$self->{'servers'}}) {
@@ -238,7 +256,8 @@ sub disconnect_all {
 }
 
 sub _oneline {
-    my ($self, $sock, $line) = @_;
+    my Cache::Memcached $self = shift;
+    my ($sock, $line) = @_;
     my $res;
     my ($ret, $offset) = (undef, 0);
 
@@ -305,7 +324,8 @@ sub _oneline {
 
 
 sub delete {
-    my ($self, $key, $time) = @_;
+    my Cache::Memcached $self = shift;
+    my ($key, $time) = @_;
     return 0 if ! $self->{'active'} || $self->{'readonly'};
     my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
@@ -314,7 +334,7 @@ sub delete {
     $self->{'stats'}->{"delete"}++;
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
-    my $cmd = "delete $key$time\r\n";
+    my $cmd = "delete $self->{namespace}$key$time\r\n";
     my $res = _oneline($self, $sock, $cmd);
 
     if ($self->{'stat_callback'}) {
@@ -338,7 +358,9 @@ sub set {
 }
 
 sub _set {
-    my ($cmdname, $self, $key, $val, $exptime) = @_;
+    my $cmdname = shift;
+    my Cache::Memcached $self = shift;
+    my ($key, $val, $exptime) = @_;
     return 0 if ! $self->{'active'} || $self->{'readonly'};
     my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
@@ -374,13 +396,13 @@ sub _set {
     $exptime = int($exptime || 0);
 
     local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    my $line = "$cmdname $key $flags $exptime $len\r\n$val\r\n";
+    my $line = "$cmdname $self->{namespace}$key $flags $exptime $len\r\n$val\r\n";
 
     my $res = _oneline($self, $sock, $line);
 
     if ($self->{'debug'} && $line) {
         chop $line; chop $line;
-        print STDERR "Cache::Memcache: $cmdname $key = $val ($line)\n";
+        print STDERR "Cache::Memcache: $cmdname $self->{namespace}$key = $val ($line)\n";
     }
 
     if ($self->{'stat_callback'}) {
@@ -400,7 +422,9 @@ sub decr {
 }
 
 sub _incrdecr {
-    my ($cmdname, $self, $key, $value) = @_;
+    my $cmdname = shift;
+    my Cache::Memcached $self = shift;
+    my ($key, $value) = @_;
     return undef if ! $self->{'active'} || $self->{'readonly'};
     my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
@@ -409,7 +433,7 @@ sub _incrdecr {
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
 
-    my $line = "$cmdname $key $value\r\n";
+    my $line = "$cmdname $self->{namespace}$key $value\r\n";
     my $res = _oneline($self, $sock, $line);
 
     if ($self->{'stat_callback'}) {
@@ -422,7 +446,8 @@ sub _incrdecr {
 }
 
 sub get {
-    my ($self, $key) = @_;
+    my Cache::Memcached $self = shift;
+    my ($key) = @_;
 
     # TODO: make a fast path for this?  or just keep using get_multi?
     my $r = $self->get_multi($key);
@@ -430,7 +455,7 @@ sub get {
 }
 
 sub get_multi {
-    my $self = shift;
+    my Cache::Memcached $self = shift;
     return undef unless $self->{'active'};
     $self->{'_stime'} = Time::HiRes::time() if $self->{'stat_callback'};
     $self->{'stats'}->{"get_multi"}++;
@@ -461,7 +486,8 @@ sub get_multi {
 
 sub _load_multi {
     use bytes; # return bytes from length()
-    my ($self, $sock_keys, $ret) = @_;
+    my Cache::Memcached $self = shift;
+    my ($sock_keys, $ret) = @_;
 
     # all keyed by a $sock:
     my %reading; # bool, whether we're reading from this socket
@@ -476,7 +502,7 @@ sub _load_multi {
     foreach (keys %$sock_keys) {
         print STDERR "processing socket $_\n" if $self->{'debug'} >= 2;
         $writing{$_} = 1;
-        $buf{$_} = "get @{$sock_keys->{$_}}\r\n";
+        $buf{$_} = "get ". join(" ", map { "$self->{namespace}$_" } @{$sock_keys->{$_}}) . "\r\n";
     }
 
     my $active_changed = 1; # force rebuilding of select sets
@@ -576,7 +602,8 @@ sub _load_multi {
 
             # do we have a complete VALUE line?
             if ($buf{$sock} =~ /^VALUE (\S+) (\d+) (\d+)\r\n/g) {
-                ($key{$sock}, $flags{$sock}, $state{$sock}) = ($1, int($2), $3+2);
+                ($key{$sock}, $flags{$sock}, $state{$sock}) =
+                    (substr($1, $self->{namespace_len}), int($2), $3+2);
                 my $p = pos($buf{$sock});
                 pos($buf{$sock}) = 0;
                 my $len = length($buf{$sock});
@@ -692,13 +719,14 @@ sub _hashfunc {
 
 # returns array of lines, or () on failure.
 sub run_command {
-    my ($self, $sock, $cmd) = @_;
+    my Cache::Memcached $self = shift;
+    my ($sock, $cmd) = @_;
     return () unless $sock;
     my $ret;
     my $line = $cmd;
     while (my $res = _oneline($self, $sock, $line)) {
         undef $line;
-	$ret .= $res;
+    $ret .= $res;
         last if $ret =~ /(?:END|ERROR)\r\n$/;
     }
     chop $ret; chop $ret;
@@ -706,7 +734,8 @@ sub run_command {
 }
 
 sub stats {
-    my ($self, $types) = @_;
+    my Cache::Memcached $self = shift;
+    my ($types) = @_;
     return 0 unless $self->{'active'};
     return 0 unless !ref($types) || ref($types) eq 'ARRAY';
     if (!ref($types)) {
@@ -815,7 +844,8 @@ sub stats {
 }
 
 sub stats_reset {
-    my ($self, $types) = @_;
+    my Cache::Memcached $self = shift;
+    my ($types) = @_;
     return 0 unless $self->{'active'};
 
     $self->init_buckets() unless $self->{'buckets'};
