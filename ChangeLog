@@ -1,3 +1,7 @@
+2003-12-01
+	* merge stats/stats_reset patch from Jamie McCarthy
+	* trailing whitespace cleanup
+
 2003-11-08
 	* work on Solaris/BSD where there's no MSG_NOSIGNAL.
 	  the expense is extra syscalls to change the local
