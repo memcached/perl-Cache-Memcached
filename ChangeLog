@@ -1,3 +1,10 @@
+2003-10-26
+	* add a test file, so automated CPAN test hosts are happy
+	* check MSG_NOSIGNAL immediately on module load, not on use,
+	  so Solaris dies early.  (still on TODO to fix, but better
+	  to fail loudly)
+	* version 1.0.11
+
 2003-10-25
 	* version 1.0.10, rename to Cache::Memcached, upload to CPAN
 	
