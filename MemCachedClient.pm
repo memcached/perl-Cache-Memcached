@@ -19,7 +19,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB);
-$VERSION = "1.0.7";
+$VERSION = "1.0.8-pre";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -188,8 +188,12 @@ sub _set {
     $sock->flush;
     my $line = <$sock>;
     if ($line eq "STORED\r\n") {
-        print STDERR "MemCache: $cmdname $key = $raw_val\n" if $self->{'debug'};
+        print STDERR "MemCache: $cmdname $key = $raw_val (STORED)\n" if $self->{'debug'};
         return 1;
+    }
+    if ($self->{'debug'}) {
+        chop $line; chop $line;
+        print STDERR "MemCache: $cmdname $key = $raw_val ($line)\n";
     }
     return 0;
 }

@@ -1,3 +1,6 @@
+2003-09-04	
+	* emit debug when set/add/replace fails, in addition to succeed
+      
 Version 1.0.7
 	-- compression support (Brad Whitaker)
 	
