@@ -10,7 +10,7 @@ package Cache::Memcached;
 use strict;
 no strict 'refs';
 use Storable ();
-use Socket qw( MSG_NOSIGNAL PF_INET SOCK_STREAM );
+use Socket qw( MSG_NOSIGNAL PF_INET IPPROTO_TCP SOCK_STREAM );
 use IO::Handle ();
 use Time::HiRes ();
 use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
@@ -18,6 +18,7 @@ use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 use fields qw{
     debug no_rehash stats compress_threshold compress_enable stat_callback
     readonly select_timeout namespace namespace_len servers active buckets
+    pref_ip
     bucketcount _single_sock _stime
 };
 
@@ -42,8 +43,6 @@ eval { $FLAG_NOSIGNAL = MSG_NOSIGNAL; };
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
 
-my $PROTO_TCP;
-
 our $SOCK_TIMEOUT = 2.6; # default timeout in seconds
 
 sub new {
@@ -56,6 +55,7 @@ sub new {
     $self->{'debug'} = $args->{'debug'} || 0;
     $self->{'no_rehash'} = $args->{'no_rehash'};
     $self->{'stats'} = {};
+    $self->{'pref_ip'} = $args->{'pref_ip'} || {};
     $self->{'compress_threshold'} = $args->{'compress_threshold'};
     $self->{'compress_enable'}    = 1;
     $self->{'stat_callback'} = $args->{'stat_callback'} || undef;
@@ -67,6 +67,11 @@ sub new {
     $self->{namespace_len} = length $self->{namespace};
 
     return $self;
+}
+
+sub set_pref_ip {
+    my Cache::Memcached $self = shift;
+    $self->{'pref_ip'} = shift;
 }
 
 sub set_servers {
@@ -188,6 +193,7 @@ sub _connect_sock { # sock, sin, timeout
 }
 
 sub sock_to_host { # (host)
+    my Cache::Memcached $self = ref $_[0] ? shift : undef;
     my $host = $_[0];
     return $cache_sock{$host} if $cache_sock{$host};
 
@@ -196,13 +202,30 @@ sub sock_to_host { # (host)
     return undef if
         $host_dead{$host} && $host_dead{$host} > $now;
     my $sock = "Sock_$host";
-    my $proto = $PROTO_TCP ||= getprotobyname('tcp');
 
-    socket($sock, PF_INET, SOCK_STREAM, $proto);
-    my $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
+    my $connected = 0;
+    my $sin;
 
-    return _dead_sock($sock, undef, 20 + int(rand(10)))
-        unless _connect_sock($sock,$sin);
+    # if a preferred IP is known, try that first.
+    if ($self && $self->{pref_ip}{$ip}) {
+        socket($sock, PF_INET, SOCK_STREAM, IPPROTO_TCP);
+        my $prefip = $self->{pref_ip}{$ip};
+        $sin = Socket::sockaddr_in($port,Socket::inet_aton($prefip));
+        if (_connect_sock($sock,$sin,0.1)) {
+            $connected = 1;
+        } else {
+            close $sock;
+        }
+    }
+
+    # normal path, or fallback path if preferred IP failed
+    unless ($connected) {
+        socket($sock, PF_INET, SOCK_STREAM, IPPROTO_TCP);
+        $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
+        unless (_connect_sock($sock,$sin)) {
+            return _dead_sock($sock, undef, 20 + int(rand(10)));
+        }
+    }
 
     # make the new socket not buffer writes.
     my $old = select($sock);
@@ -215,7 +238,7 @@ sub sock_to_host { # (host)
 sub get_sock { # (key)
     my Cache::Memcached $self = shift;
     my ($key) = @_;
-    return sock_to_host($self->{'_single_sock'}) if $self->{'_single_sock'};
+    return $self->sock_to_host($self->{'_single_sock'}) if $self->{'_single_sock'};
     return undef unless $self->{'active'};
     my $hv = ref $key ? int($key->[0]) : _hashfunc($key);
 
@@ -225,7 +248,7 @@ sub get_sock { # (key)
     my $tries = 0;
     while ($tries++ < 20) {
         my $host = $self->{'buckets'}->[$hv % $self->{'bucketcount'}];
-        my $sock = sock_to_host($host);
+        my $sock = $self->sock_to_host($host);
         return $sock if $sock;
         return undef if $sock->{'no_rehash'};
         $hv += _hashfunc($tries . $real_key);  # stupid, but works
@@ -765,7 +788,7 @@ sub stats {
     my @hosts = @{$self->{'buckets'}};
     my %malloc_keys = ( );
   HOST: foreach my $host (@hosts) {
-        my $sock = sock_to_host($host);
+        my $sock = $self->sock_to_host($host);
       TYPE: foreach my $typename (grep !/^self$/, @$types) {
             my $type = $typename eq 'misc' ? "" : " $typename";
             my $line = _oneline($self, $sock, "stats$type\r\n");
@@ -852,7 +875,7 @@ sub stats_reset {
     $self->init_buckets() unless $self->{'buckets'};
 
   HOST: foreach my $host (@{$self->{'buckets'}}) {
-        my $sock = sock_to_host($host);
+        my $sock = $self->sock_to_host($host);
         my $ok = _oneline($self, $sock, "stats reset");
         unless ($ok eq "RESET\r\n") {
             _dead_sock($sock);

@@ -1,3 +1,7 @@
+2004-06-19
+	* support multiple paths to memcache nodes (Brad)
+	  see 'set_pref_ip'
+
 2004-05-30
 	* release version 1.13
 
