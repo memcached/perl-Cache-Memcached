@@ -15,9 +15,6 @@ use IO::Handle ();
 
 BEGIN {
     eval "use Time::HiRes qw (alarm);";
-
-    # so it'll bomb during tests on Solaris, until we make it work
-    $_ = MSG_NOSIGNAL;
 }
 
 # flag definitions
@@ -27,11 +24,13 @@ use constant F_COMPRESS => 2;
 # size savings required before saving compressed value
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
-use vars qw($VERSION $HAVE_ZLIB);
+use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
 $VERSION = "1.0.12-pre";
 
+$FLAG_NOSIGNAL = 0;
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
+    $FLAG_NOSIGNAL = eval { MSG_NOSIGNAL } || 0;
 }
 
 my %host_dead;   # host -> unixtime marked dead until
@@ -218,10 +217,11 @@ sub delete {
     my $cmd = "delete $key$time\r\n";
     my $res = "";
 
+    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
     local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
     alarm($SOCK_TIMEOUT);
     eval {
-        send($sock, $cmd, MSG_NOSIGNAL) ? 
+        send($sock, $cmd, $FLAG_NOSIGNAL) ? 
             ($res = readline($sock)) :
             _dead_sock($sock);
         alarm(0);
@@ -277,11 +277,12 @@ sub _set {
 
     $exptime = int($exptime || 0);
 
+    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
     local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
     alarm($SOCK_TIMEOUT);
     my ($res, $line) = (0, "");
     eval {
-        $res = send($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n", MSG_NOSIGNAL);
+        $res = send($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n", $FLAG_NOSIGNAL);
         if ($res) {
             $line = readline($sock);
             $res = $line eq "STORED\r\n";
@@ -316,11 +317,12 @@ sub _incrdecr {
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
 
+    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
     local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
     alarm($SOCK_TIMEOUT);
     my $line;
     eval {
-        send($sock, "$cmdname $key $value\r\n", MSG_NOSIGNAL) ?
+        send($sock, "$cmdname $key $value\r\n", $FLAG_NOSIGNAL) ?
             $line = readline($sock) :
             _dead_sock($sock);
         alarm(0);
@@ -342,10 +344,11 @@ sub get {
 
     my %val;
 
+    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
     local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
     alarm($SOCK_TIMEOUT);
     eval {
-        send($sock, "get $key\r\n", MSG_NOSIGNAL) ?
+        send($sock, "get $key\r\n", $FLAG_NOSIGNAL) ?
             _load_items($sock, \%val) :
              _dead_sock($sock, undef);
         alarm(0);
@@ -381,6 +384,7 @@ sub get_multi {
     $self->{'stats'}->{"get_keys"} += @_;
     $self->{'stats'}->{"get_socks"} += @socks;
 
+    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
     local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
 
     # pass 1: send out requests
@@ -389,7 +393,7 @@ sub get_multi {
     alarm($SOCK_TIMEOUT);
     foreach my $sock (@socks) {
         eval {
-            if (send($sock, "get @{$sock_keys{$sock}}\r\n", MSG_NOSIGNAL)) {
+            if (send($sock, "get @{$sock_keys{$sock}}\r\n", $FLAG_NOSIGNAL)) {
                 push @gather, $sock;
             } else {
                 _dead_sock($sock);
@@ -470,10 +474,11 @@ sub run_command {
     my ($sock, $cmd) = @_;
     return () unless $sock;
     my @ret;
+    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
     local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
     alarm($SOCK_TIMEOUT);
     eval {
-        if (send($sock, $cmd, MSG_NOSIGNAL)) {
+        if (send($sock, $cmd, $FLAG_NOSIGNAL)) {
             while (my $res = readline($sock)) {
                 push @ret, $res;
                 last if $res eq "END\r\n";

@@ -1,3 +1,11 @@
+2003-11-08
+	* work on Solaris/BSD where there's no MSG_NOSIGNAL.
+	  the expense is extra syscalls to change the local
+	  SIGPIPE handler all the time.  in the future, it'd 
+	  be nice to have an option so Solaris/BSD callers
+	  can say, "Hey, I've turned off SIGPIPE globally,
+	  don't worry about it."
+
 2003-10-26
 	* add a test file, so automated CPAN test hosts are happy
 	* check MSG_NOSIGNAL immediately on module load, not on use,
