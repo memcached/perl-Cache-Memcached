@@ -908,6 +908,15 @@ $memd->replace($key, $value[, $exptime]);
 Like C<set>, but only stores in memcache if the key already exists.  The
 opposite of C<add>.
 
+=item C<delete>
+
+$memd->delete($key[, $time]);
+
+Deletes a key.  You may optionally provide an integer time value (in seconds) to
+tell the memcached server to block new writes to this key for that many seconds.
+(Sometimes useful as a hacky means to prevent races.)  Returns true if key
+was found and deleted, and false otherwise.
+
 =item C<incr>
 
 $memd->incr($key[, $value]);

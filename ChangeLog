@@ -1,3 +1,6 @@
+2003-02-17
+	* document in POD the delete method
+	
 2003-02-03
 	* fix bug with 2k read boundaries falling in the middle
 	  of "VALUE ..." or "END" lines, thus halting future
