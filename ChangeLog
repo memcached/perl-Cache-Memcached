@@ -1,3 +1,9 @@
+2003-10-16
+	* use Storable::nfreeze instead of freeze, so hosts from different
+	  architectures can all use the same data.  (all must use Perl, though.
+	  the different memcache APIs all store/pickle/serialize data differently)
+	  Suggestion by Jason Titus <jtitus@postini.com>
+	
 2003-10-06
 	* fix _incrdecr to return complete number, not just first
 	  digit (thanks to Ryan T. Dean)

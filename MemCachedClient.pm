@@ -21,7 +21,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB);
-$VERSION = "1.0.9";
+$VERSION = "1.0.10-pre";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -225,7 +225,7 @@ sub _set {
     $key = ref $key ? $key->[1] : $key;
 
     if (ref $val) {
-        $val = Storable::freeze($val);
+        $val = Storable::nfreeze($val);
         $flags |= F_STORABLE;
     }
 
