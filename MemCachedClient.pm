@@ -92,7 +92,7 @@ sub _dead_sock {
 }
 
 sub sock_to_host { # (host)
-    my $host = shift;
+    my $host = $_[0];
     return $cache_sock{$host} if $cache_sock{$host};
 
     my $now = time();
@@ -268,7 +268,7 @@ sub get {
 }
 
 sub get_multi {
-    my $self = shift;
+    my $self = $_[0];
     return undef unless $self->{'active'};
     $self->{'stats'}->{"get_multi"}++;
     my %val;        # what we'll be returning a reference to (realkey -> value)
@@ -314,8 +314,7 @@ sub get_multi {
 use vars qw($buf);
 
 sub _load_items {
-    my $sock = shift;
-    my $outref = shift;
+    my ($sock, $outref) = @_;
 
     use bytes; # return bytes from length()
 
@@ -350,8 +349,7 @@ sub _load_items {
 		$flags{$rkey} = $flags;
 		$len{$rkey} = $len;
 	    } elsif (substr($buf,$bufpos,5) eq "END\r\n") {
-		foreach (keys %len) {
-		    next unless exists $val{$_};
+		foreach (keys %val) {
 		    next unless length($val{$_}) == $len{$_};
 		    $val{$_} = Compress::Zlib::memGunzip($val{$_}) if $HAVE_ZLIB && $flags{$_} & F_COMPRESS;
 		    $val{$_} = Storable::thaw($val{$_}) if $flags{$_} & F_STORABLE;
