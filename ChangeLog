@@ -1,7 +1,20 @@
-2003-02-17
+2004-02-29 (Brad)
+	* add readonly option
+	
+2004-02-27 (Avva)
+	* Cleaner handling of the case when _oneline is called without a
+	  line parameter (i.e. not to send anything, just read a line from
+	  the socket).  Make it depend on $line being defined only,
+	  regardless of its content (thanks Brad!).
+
+2004-02-25 (Avva)
+	* Asyncify all I/O, finally get rid of alarm() yuckiness, unify all
+	  one-liner command/responses into a single internal API.
+	
+2004-02-17
 	* document in POD the delete method
 	
-2003-02-03
+2004-02-03
 	* fix bug with 2k read boundaries falling in the middle
 	  of "VALUE ..." or "END" lines, thus halting future
 	  parsing and responses.  (eek!)

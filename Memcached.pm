@@ -48,6 +48,7 @@ sub new {
     $self->{'stats'} = {};
     $self->{'compress_threshold'} = $args->{'compress_threshold'};
     $self->{'compress_enable'}    = 1;
+    $self->{'readonly'} = $args->{'readonly'};
 
     # TODO: undocumented
     $self->{'select_timeout'} = $args->{'select_timeout'} || 1.0;
@@ -73,6 +74,11 @@ sub set_servers {
 sub set_debug {
     my ($self, $dbg) = @_;
     $self->{'debug'} = $dbg;
+}
+
+sub set_readonly {
+    my ($self, $ro) = @_;
+    $self->{'readonly'} = $ro;
 }
 
 sub set_norehash {
@@ -279,7 +285,7 @@ sub _oneline {
 
 sub delete {
     my ($self, $key, $time) = @_;
-    return 0 unless $self->{'active'};
+    return 0 if ! $self->{'active'} || $self->{'readonly'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
 
@@ -306,7 +312,7 @@ sub set {
 
 sub _set {
     my ($cmdname, $self, $key, $val, $exptime) = @_;
-    return 0 unless $self->{'active'};
+    return 0 if ! $self->{'active'} || $self->{'readonly'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
 
@@ -361,7 +367,7 @@ sub decr {
 
 sub _incrdecr {
     my ($cmdname, $self, $key, $value) = @_;
-    return undef unless $self->{'active'};
+    return undef if ! $self->{'active'} || $self->{'readonly'};
     my $sock = $self->get_sock($key);
     return undef unless $sock;
     $key = $key->[1] if ref $key;
@@ -828,6 +834,10 @@ Use C<no_rehash> to disable finding a new memcached server when one
 goes down.  Your application may or may not need this, depending on
 your expirations and key usage.
 
+Use C<readonly> to disable writes to backend memcached servers.  Only
+get and get_multi will work.  This is useful in bizarre debug and
+profiling cases only.
+
 The other useful key is C<debug>, which when set to true will produce
 diagnostics on STDERR.
 
@@ -846,6 +856,10 @@ constructor.
 =item C<set_debug>
 
 Sets the C<debug> flag.  See C<new> constructor for more information.
+
+=item C<set_readonly>
+
+Sets the C<readonly> flag.  See C<new> constructor for more information.
 
 =item C<set_norehash>
 
