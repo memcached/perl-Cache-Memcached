@@ -466,8 +466,8 @@ sub get_multi {
     foreach my $key (@_) {
         $sock = $self->get_sock($key);
         next unless $sock;
-        $key = ref $key ? $key->[1] : $key;
-        push @{$sock_keys{$sock}}, $key;
+        my $kval = ref $key ? $key->[1] : $key;
+        push @{$sock_keys{$sock}}, $kval;
     }
     $self->{'stats'}->{"get_keys"} += @_;
     $self->{'stats'}->{"get_socks"} += keys %sock_keys;
