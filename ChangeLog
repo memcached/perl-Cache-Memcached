@@ -1,3 +1,6 @@
+2003-10-25
+	* version 1.0.10, rename to Cache::Memcached, upload to CPAN
+	
 2003-10-18
 	* implement read/write timeouts everywhere. Now the client shouldn't
           hang if the server machine goes down unexpectedly. (avva)
