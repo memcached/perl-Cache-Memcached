@@ -229,7 +229,7 @@ sub _load_items {
             next ITEM;
         }
         if ($line eq "END\r\n") {
-            foreach (@_) {
+            foreach (keys %len) {
                 next unless exists $val{$_};
                 next unless length($val{$_}) == $len{$_};
                 $val{$_} = Storable::thaw($val{$_}) if $flags{$_} & 1;
