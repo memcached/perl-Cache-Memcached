@@ -22,7 +22,6 @@ use fields qw{
     bucketcount _single_sock _stime
 };
 
-
 # flag definitions
 use constant F_STORABLE => 1;
 use constant F_COMPRESS => 2;
@@ -31,7 +30,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.13";
+$VERSION = "1.14-pre";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -628,11 +627,14 @@ sub _load_multi {
             }
 
             # do we have a complete VALUE line?
-            if ($buf{$sock} =~ /^VALUE (\S+) (\d+) (\d+)\r\n/g) {
+            if ($buf{$sock} =~ /^VALUE (\S+) (\d+) (\d+)\r\n/) {
                 ($key{$sock}, $flags{$sock}, $state{$sock}) =
                     (substr($1, $self->{namespace_len}), int($2), $3+2);
-                my $p = pos($buf{$sock});
-                pos($buf{$sock}) = 0;
+                # Note: we use $+[0] and not pos($buf{$sock}) because pos()
+                # seems to have problems under perl's taint mode.  nobody
+                # on the list discovered why, but this seems a reasonable
+                # work-around:
+                my $p = $+[0];
                 my $len = length($buf{$sock});
                 my $copy = $len-$p > $state{$sock} ? $state{$sock} : $len-$p;
                 $ret->{$key{$sock}} = substr($buf{$sock}, $p, $copy)

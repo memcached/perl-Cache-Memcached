@@ -1,3 +1,7 @@
+2004-07-19
+	* don't use pos() because it doesn't seem to work in
+	  taint mode.  use $+[0] instead.  (Dave Evans <..@djce.org.uk>)
+
 2004-06-19
 	* support multiple paths to memcache nodes (Brad)
 	  see 'set_pref_ip'
@@ -32,7 +36,7 @@
 	  so caller must decide when it's really time to quit.  had to modify
 	  run_command to know that.  (which is used by stats)
 
-2004-03-05 (Dave Evans <danga-20040305@djce.org.uk>)
+2004-03-05 (Dave Evans <..@djce.org.uk>)
 	* Here's a really trivial patch for the Perl binding,
 	Cache::Memcached.  The bug is that the module assumes that the
 	currently select()ed filehandle is STDOUT, but this might not be
