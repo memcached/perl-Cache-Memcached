@@ -12,7 +12,7 @@ use Storable ();
 package MemCachedClient;
 
 use vars qw($VERSION);
-$VERSION = "1.0.2";
+$VERSION = "1.0.3";
 
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
@@ -25,6 +25,7 @@ sub new {
 
     $self->set_servers($args->{'servers'});
     $self->{'debug'} = $args->{'debug'};
+    $self->{'stats'} = {};
     return $self;
 }
 
@@ -101,6 +102,7 @@ sub delete {
     return 0 unless $self->{'active'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
+    $self->{'stats'}->{"delete"}++;
     $key = ref $key eq "ARRAY" ? $key->[1] : $key;
     my $cmd = "delete $key\r\n";
     $sock->print($cmd);
@@ -126,6 +128,7 @@ sub _set {
     return 0 unless $self->{'active'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
+    $self->{'stats'}->{$cmdname}++;
     my $flags = 0;
     $key = ref $key eq "ARRAY" ? $key->[1] : $key;
     my $raw_val = $val;
@@ -148,6 +151,8 @@ sub _set {
 
 sub get {
     my ($self, $key) = @_;
+    $self->{'stats'}->{"get"}++;
+    $self->{'stats'}->{"get_multi"}--;
     my $val = $self->get_multi($key);
     return undef unless $val;
     return $val->{$key};
@@ -156,6 +161,7 @@ sub get {
 sub get_multi {
     my $self = shift;
     return undef unless $self->{'active'};
+    $self->{'stats'}->{"get_multi"}++;
     my %val;        # what we'll be returning a reference to (realkey -> value)
     my %sock_keys;  # sockref_as_scalar -> [ realkeys ]
     my @socks;      # unique socket refs
@@ -169,8 +175,18 @@ sub get_multi {
         }
         push @{$sock_keys{$sock}}, $key;
     }
+    $self->{'stats'}->{"get_keys"} += @_;
+    $self->{'stats'}->{"get_socks"} += @socks;
+
+    # pass 1: send out requests
     foreach my $sock (@socks) {
-        _load_items($sock, \%val, @{$sock_keys{$sock}});
+        my $cmd = "get @{$sock_keys{$sock}}\r\n";
+        $sock->print($cmd);
+        $sock->flush;
+    }
+    # pass 2: parse responses
+    foreach my $sock (@socks) {
+        _load_items($sock, \%val);
     }
     if ($self->{'debug'}) {
         while (my ($k, $v) = each %val) {
@@ -188,9 +204,6 @@ sub _load_items {
     my %val;
     my %len;   # key -> intended length
 
-    my $cmd = "get @_\r\n";
-    $sock->print($cmd);
-    $sock->flush;
   ITEM:
     while (1) {
         my $line = $sock->getline;
