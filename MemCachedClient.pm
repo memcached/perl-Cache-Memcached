@@ -99,13 +99,14 @@ sub disconnect_all {
 }
 
 sub delete {
-    my ($self, $key) = @_;
+    my ($self, $key, $time) = @_;
     return 0 unless $self->{'active'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
     $self->{'stats'}->{"delete"}++;
     $key = ref $key eq "ARRAY" ? $key->[1] : $key;
-    my $cmd = "delete $key\r\n";
+    $time = " $time" if $time;
+    my $cmd = "delete $key$time\r\n";
     $sock->print($cmd);
     $sock->flush;
     my $line = <$sock>;
