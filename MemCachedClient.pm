@@ -91,6 +91,16 @@ sub _dead_sock {
     return $ret;  # 0 or undef, probably, depending on what caller wants
 }
 
+sub _close_sock {
+    my ($sock) = @_;
+    if ($sock =~ /^Sock_(.+?):(\d+)$/) {
+        my ($ip, $port) = ($1, $2);
+        my $host = "$ip:$port";
+        close $sock;
+        delete $cache_sock{$host};
+    }
+}
+
 sub sock_to_host { # (host)
     my $host = $_[0];
     return $cache_sock{$host} if $cache_sock{$host};
@@ -108,6 +118,12 @@ sub sock_to_host { # (host)
     my $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
 
     return _dead_sock($sock, undef) unless (connect($sock,$sin));
+
+    # make the new socket not buffer writes.
+    select($sock);
+    $| = 1;
+    select(STDOUT);
+
     return $cache_sock{$host} = $sock;
 }
 
@@ -154,10 +170,9 @@ sub delete {
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
-    syswrite($sock, $cmd) or return _dead_sock($sock, 0);
-    my $res;
-    sysread($sock, $res, 255) or return _dead_sock($sock, 0);
-    return 1 if $res eq "DELETED\r\n";
+    print $sock $cmd or return _dead_sock($sock, 0);
+    my $res = readline($sock);
+    return $res eq "DELETED\r\n";
 }
 
 sub add {
@@ -206,11 +221,10 @@ sub _set {
     }
 
     $exptime = int($exptime || 0);
-    syswrite($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n") 
+    print $sock "$cmdname $key $flags $exptime $len\r\n$val\r\n"
         or return _dead_sock($sock, 0);
 
-    my $line;
-    sysread($sock, $line, 255) or return _dead_sock($sock, 0);
+    my $line = readline($sock);
     if ($line eq "STORED\r\n") {
         print STDERR "MemCache: $cmdname $key = $val (STORED)\n" if $self->{'debug'};
         return 1;
@@ -237,10 +251,9 @@ sub _incrdecr {
     return undef unless $sock;
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
-    my $cmd = "$cmdname $key $value\r\n";
-    syswrite($sock, $cmd) or return _dead_sock($sock, undef);
-    my $line;
-    sysread($sock, $line, 255) or return _dead_sock($sock, undef);
+    print $sock "$cmdname $key $value\r\n" 
+	or return _dead_sock($sock, undef);
+    my $line = readline($sock);
     return undef unless $line =~ /^(\d)/; 
     return $1;
 }
@@ -256,7 +269,7 @@ sub get {
     $key = $key->[1] if ref $key;
 
     my %val;
-    syswrite($sock, "get $key\r\n") or return _dead_sock($sock, undef);
+    print $sock "get $key\r\n" or return _dead_sock($sock, undef);
     _load_items($sock, \%val);
 
     if ($self->{'debug'}) {
@@ -290,7 +303,7 @@ sub get_multi {
     # pass 1: send out requests
     my @gather;
     foreach my $sock (@socks) {
-        if (syswrite($sock, "get @{$sock_keys{$sock}}\r\n")) {
+        if (print $sock "get @{$sock_keys{$sock}}\r\n") {
             push @gather, $sock;
         } else {
             _dead_sock($sock);
@@ -308,69 +321,30 @@ sub get_multi {
     return \%val;
 }
 
-# keep this global, so it grows big and doesn't shrink.
-# it's our play buffer.  without it, perl does lots of
-# syscalls and remaps.
-use vars qw($buf);
-
 sub _load_items {
-    my ($sock, $outref) = @_;
-
+    my ($sock, $ret) = @_;
     use bytes; # return bytes from length()
-
-    my %flags;
-    my %val;
-    my %len;   # key -> intended length
-
-    # the current buffer we're operating on
-    my $buflen = 0;
-    my $bufpos = 0;  # where we're expecting the next "VALUE" or "END"
-
-    # the key currently being read, its flags, its length (without \r\n)
-    # and the position it starts at in $buf
-    my ($rkey, $flags, $len, $rpos);
-
-    # this flag is set when parser is expecting more
-    my $need_more = 1;
-
-  ITEM:
     while (1) {
-	if ($need_more) {
-	    my $n = sysread($sock, $buf, 50_000, $buflen);
-            return _dead_sock($sock, 0) unless defined $n;
-            $buflen += $n;
-	    $need_more = 0;
-	}
-	if (! defined $rkey) {
-            pos($buf) = $bufpos;
-	    if ($buf =~ /\GVALUE (\S+) (\d+) (\d+)\r\n/g) {
-                $rpos = pos($buf);
-		($rkey, $flags, $len) = ($1, $2, $3);
-		$flags{$rkey} = $flags;
-		$len{$rkey} = $len;
-	    } elsif (substr($buf,$bufpos,5) eq "END\r\n") {
-		foreach (keys %val) {
-		    next unless length($val{$_}) == $len{$_};
-		    $val{$_} = Compress::Zlib::memGunzip($val{$_}) if $HAVE_ZLIB && $flags{$_} & F_COMPRESS;
-		    $val{$_} = Storable::thaw($val{$_}) if $flags{$_} & F_STORABLE;
-		    $outref->{$_} = $val{$_};
-		}
-		return 1;
-	    } else {
-                # we must be in the middle of a "VALUE" or "END" heading.
-                $need_more = 1;
-            }
-        }
-        if (defined $rkey) {
-            my $avail = $buflen - $rpos;  # how much is after the "VALUE..\r\n"
-            if ($avail >= $len+2) {       # we also need the 2-byte \r\n after the data
-                $val{$rkey} = substr($buf,$rpos,$len);
-                $bufpos = $rpos + $len + 2;  # after the \r\n
-                $rkey = undef;
-            } else {
-                # Not enough.  Keep reading.
-                $need_more = 1;
-            }
+	my $decl = readline($sock);
+	if ($decl eq "END\r\n") {
+	    return 1;
+	} elsif ($decl =~ /^VALUE (\S+) (\d+) (\d+)\r\n$/) {
+	    my ($rkey, $flags, $len) = ($1, $2, $3);
+	    my $n = read($sock, $ret->{$rkey}, $len);
+	    unless ($n == $len) {
+		# something messed up.  let's abort.
+		delete $ret->{$rkey};
+		_close_sock($sock);
+		return 0;
+	    }
+	    seek($sock,2,1); # seek past the \r\n
+	    $ret->{$rkey} = Compress::Zlib::memGunzip($ret->{$rkey})
+		if $HAVE_ZLIB && $flags & F_COMPRESS;
+	    $ret->{$rkey} = Storable::thaw($ret->{$rkey})
+		if $flags & F_STORABLE;
+	} else {
+	    print STDERR "Error parsing memcached response\n";
+	    return 0;
 	}
     }
 }
