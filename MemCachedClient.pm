@@ -92,7 +92,8 @@ sub sock_to_host { # (host)
 sub get_sock { # (key)
     my ($self, $key) = @_;
     return undef unless $self->{'active'};
-    my $hv = ref $key eq "ARRAY" ? int($key->[0]) : _hashfunc($key);
+    return sock_to_host($self->{'servers'}[0]) if @{$self->{'servers'}} == 1;
+    my $hv = ref $key ? int($key->[0]) : _hashfunc($key);
 
     unless ($self->{'buckets'}) {
         my $bu = $self->{'buckets'} = [];
@@ -224,10 +225,21 @@ sub _incrdecr {
 sub get {
     my ($self, $key) = @_;
     $self->{'stats'}->{"get"}++;
-    $self->{'stats'}->{"get_multi"}--;
-    my $val = $self->get_multi($key);
-    return undef unless $val;
-    return $val->{$key};
+    
+    my $sock = $self->get_sock($key);
+    return undef unless $sock;
+
+    my %val;
+    $sock->print("get $key\r\n");
+    $sock->flush;
+    _load_items($sock, \%val);
+
+    if ($self->{'debug'}) {
+        while (my ($k, $v) = each %val) {
+            print STDERR "MemCache: got $k = $v\n";
+        }
+    }
+    return $val{$key};
 }
 
 sub get_multi {
@@ -281,9 +293,9 @@ sub _load_items {
   ITEM:
     while (1) {
         my $line = $sock->getline;
-        if ($line =~ /^VALUE (\S+) (\d+) (\d+)\r\n$/s) {
+        if ($line =~ /^VALUE (\S+) (\d+) (\d+)\r\n$/o) {
             my ($rk, $flags, $len) = ($1, $2, $3);
-            $flags{$rk} = $flags if $flags;
+            $flags{$rk} = $flags;
             $len{$rk} = $len;
             my $bytes_read = 0;
             my $buf;

@@ -1,3 +1,8 @@
+2003-09-28
+	* prevent some warnings
+	* faster get() call that doesn't use get_multi()
+	* optimizations for single-server case
+	
 2003-09-04	
 	* emit debug when set/add/replace fails, in addition to succeed
       
