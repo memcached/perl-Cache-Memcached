@@ -1,0 +1,9 @@
+-- MSG_NOSIGNAL is undefined on Solaris, so module is unusable.
+   instead, should let callers choose to handle it themselves
+   ($SIG{'PIPE'} = "IGNORE";) or otherwise let the module do it
+   itself, in which case it'll do MSG_NOSIGNAL if available,
+   or localize $SIG{'PIPE'} everywhere, which is kinda slow.
+   (lot of syscalls)
+
+-- provide option to not do remapping, to avoid the "netsplit
+   problem".  (some apps might have a problem with that)
