@@ -308,6 +308,11 @@ sub get_multi {
     return \%val;
 }
 
+# keep this global, so it grows big and doesn't shrink.
+# it's our play buffer.  without it, perl does lots of
+# syscalls and remaps.
+use vars qw($buf);
+
 sub _load_items {
     my $sock = shift;
     my $outref = shift;
@@ -317,33 +322,34 @@ sub _load_items {
     my %flags;
     my %val;
     my %len;   # key -> intended length
-    my $buf = "";
-    
-    # the key currently being read
-    my ($rkey, $flags, $len);
 
+    # the current buffer we're operating on
+    my $buflen = 0;
+    my $bufpos = 0;  # where we're expecting the next "VALUE" or "END"
+
+    # the key currently being read, its flags, its length (without \r\n)
+    # and the position it starts at in $buf
+    my ($rkey, $flags, $len, $rpos);
+
+    # this flag is set when parser is expecting more
     my $need_more = 1;
-
-    # FIXME: it's kinda lame how this works, reading and shifting down, over and over.
-    # it'd be better to read a whole bunch (100k or so), and move the ^VALUE regexp around
-    # with pos(), and extracting substrings, without appending to $buf and moving $buf
-    # around.
 
   ITEM:
     while (1) {
 	if ($need_more) {
-            # should finish normally (with END), not by empty read
-	    my $n = sysread($sock, $buf, 50_000, length($buf));
-            return _dead_sock($sock, 0) unless $n;
-	    $need_more = 0;  # set later if needed
+	    my $n = sysread($sock, $buf, 50_000, $buflen);
+            return _dead_sock($sock, 0) unless defined $n;
+            $buflen += $n;
+	    $need_more = 0;
 	}
-
 	if (! defined $rkey) {
-	    if ($buf =~ s/^VALUE (\S+) (\d+) (\d+)\r\n//so) {
+            pos($buf) = $bufpos;
+	    if ($buf =~ /\GVALUE (\S+) (\d+) (\d+)\r\n/g) {
+                $rpos = pos($buf);
 		($rkey, $flags, $len) = ($1, $2, $3);
 		$flags{$rkey} = $flags;
 		$len{$rkey} = $len;
-	    } elsif ($buf =~ /^END\r\n/) {
+	    } elsif (substr($buf,$bufpos,5) eq "END\r\n") {
 		foreach (keys %len) {
 		    next unless exists $val{$_};
 		    next unless length($val{$_}) == $len{$_};
@@ -352,17 +358,21 @@ sub _load_items {
 		    $outref->{$_} = $val{$_};
 		}
 		return 1;
-	    }
-        } else {
-	    if (length($buf) >= $len + 2) {
-		$val{$rkey} = substr($buf,0,$len);
-		# move the buffer down, including the trailing \r\n
-		substr($buf,0,$len+2,"");
-		$rkey = undef;
 	    } else {
-		# we're in the middle of a long value
-		$need_more = 1;
-	    }
+                # we must be in the middle of a "VALUE" or "END" heading.
+                $need_more = 1;
+            }
+        }
+        if (defined $rkey) {
+            my $avail = $buflen - $rpos;  # how much is after the "VALUE..\r\n"
+            if ($avail >= $len+2) {       # we also need the 2-byte \r\n after the data
+                $val{$rkey} = substr($buf,$rpos,$len);
+                $bufpos = $rpos + $len + 2;  # after the \r\n
+                $rkey = undef;
+            } else {
+                # Not enough.  Keep reading.
+                $need_more = 1;
+            }
 	}
     }
 }

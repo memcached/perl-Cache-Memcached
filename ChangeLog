@@ -1,3 +1,6 @@
+2003-09-29
+	* yet faster parsing
+
 2003-09-28
 	* prevent some warnings
 	* faster get() call that doesn't use get_multi()
