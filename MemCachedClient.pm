@@ -129,7 +129,7 @@ sub delete {
     return 0 unless $sock;
     $self->{'stats'}->{"delete"}++;
     $key = ref $key eq "ARRAY" ? $key->[1] : $key;
-    $time = " $time" if $time;
+    $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
     $sock->print($cmd);
     $sock->flush;
