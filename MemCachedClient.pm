@@ -13,6 +13,10 @@ use Storable ();
 use Socket qw(MSG_NOSIGNAL PF_INET SOCK_STREAM);
 use IO::Handle ();
 
+BEGIN {
+    eval "use Time::HiRes qw (alarm);";
+}
+
 # flag definitions
 use constant F_STORABLE => 1;
 use constant F_COMPRESS => 2;
@@ -31,6 +35,8 @@ my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
 
 my $PROTO_TCP;
+
+our $SOCK_TIMEOUT = 2.6; # default timeout in seconds
 
 sub new {
     my ($class, $args) = @_;
@@ -94,10 +100,12 @@ sub _dead_sock {
 
 sub _close_sock {
     my ($sock) = @_;
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
     if ($sock =~ /^Sock_(.+?):(\d+)$/) {
         my ($ip, $port) = ($1, $2);
         my $host = "$ip:$port";
-        close $sock;
+        alarm($SOCK_TIMEOUT);
+        eval { close $sock; alarm(0); };
         delete $cache_sock{$host};
     }
 }
@@ -182,7 +190,14 @@ sub get_sock { # (key)
 }
 
 sub disconnect_all {
-    close($_) foreach (values %cache_sock);
+    my $sock;
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
+    alarm($SOCK_TIMEOUT);
+    foreach $sock (values %cache_sock) {
+        eval { close $sock; };
+        alarm($SOCK_TIMEOUT) if $@ eq 'alarm'; #re-alarm
+    }
+    alarm(0);
     %cache_sock = ();
 }
 
@@ -191,12 +206,22 @@ sub delete {
     return 0 unless $self->{'active'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
+
     $self->{'stats'}->{"delete"}++;
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
-    send($sock, $cmd, MSG_NOSIGNAL) or return _dead_sock($sock, 0);
-    my $res = readline($sock);
+    my $res = "";
+
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
+    alarm($SOCK_TIMEOUT);
+    eval {
+        send($sock, $cmd, MSG_NOSIGNAL) ? 
+            ($res = readline($sock)) :
+            _dead_sock($sock);
+        alarm(0);
+    };
+
     return $res eq "DELETED\r\n";
 }
 
@@ -246,19 +271,27 @@ sub _set {
     }
 
     $exptime = int($exptime || 0);
-    send($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n", MSG_NOSIGNAL)
-        or return _dead_sock($sock, 0);
 
-    my $line = readline($sock);
-    if ($line eq "STORED\r\n") {
-        print STDERR "MemCache: $cmdname $key = $val (STORED)\n" if $self->{'debug'};
-        return 1;
-    }
-    if ($self->{'debug'}) {
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
+    alarm($SOCK_TIMEOUT);
+    my ($res, $line) = (0, "");
+    eval {
+        $res = send($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n", MSG_NOSIGNAL);
+        if ($res) {
+            $line = readline($sock);
+            $res = $line eq "STORED\r\n";
+        }
+        else {
+            _dead_sock($sock);
+        }
+        alarm(0);
+    };
+
+    if ($self->{'debug'} && $line) {
         chop $line; chop $line;
         print STDERR "MemCache: $cmdname $key = $val ($line)\n";
     }
-    return 0;
+    return $res;
 }
 
 sub incr {
@@ -277,9 +310,17 @@ sub _incrdecr {
     $key = $key->[1] if ref $key;
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
-    send($sock, "$cmdname $key $value\r\n", MSG_NOSIGNAL)
-	or return _dead_sock($sock, undef);
-    my $line = readline($sock);
+
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
+    alarm($SOCK_TIMEOUT);
+    my $line;
+    eval {
+        send($sock, "$cmdname $key $value\r\n", MSG_NOSIGNAL) ?
+            $line = readline($sock) :
+            _dead_sock($sock);
+        alarm(0);
+    };
+
     return undef unless $line =~ /^(\d+)/;
     return $1;
 }
@@ -295,14 +336,21 @@ sub get {
     $key = $key->[1] if ref $key;
 
     my %val;
-    send($sock, "get $key\r\n", MSG_NOSIGNAL) or return _dead_sock($sock, undef);
-    _load_items($sock, \%val);
 
-    if ($self->{'debug'}) {
-        while (my ($k, $v) = each %val) {
-            print STDERR "MemCache: got $k = $v\n";
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
+    alarm($SOCK_TIMEOUT);
+    eval {
+        send($sock, "get $key\r\n", MSG_NOSIGNAL) ?
+            _load_items($sock, \%val) :
+             _dead_sock($sock, undef);
+        alarm(0);
+        if ($self->{'debug'}) {
+            while (my ($k, $v) = each %val) {
+                print STDERR "MemCache: got $k = $v\n";
+            }
         }
-    }
+    };
+
     return $val{$key};
 }
 
@@ -313,8 +361,10 @@ sub get_multi {
     my %val;        # what we'll be returning a reference to (realkey -> value)
     my %sock_keys;  # sockref_as_scalar -> [ realkeys ]
     my @socks;      # unique socket refs
+    my $sock;
+
     foreach my $key (@_) {
-        my $sock = $self->get_sock($key);
+        $sock = $self->get_sock($key);
         next unless $sock;
         $key = ref $key ? $key->[1] : $key;
         unless ($sock_keys{$sock}) {
@@ -326,19 +376,32 @@ sub get_multi {
     $self->{'stats'}->{"get_keys"} += @_;
     $self->{'stats'}->{"get_socks"} += @socks;
 
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
+
     # pass 1: send out requests
     my @gather;
+
+    alarm($SOCK_TIMEOUT);
     foreach my $sock (@socks) {
-        if (send($sock, "get @{$sock_keys{$sock}}\r\n", MSG_NOSIGNAL)) {
-            push @gather, $sock;
-        } else {
-            _dead_sock($sock);
-        }
+        eval {
+            if (send($sock, "get @{$sock_keys{$sock}}\r\n", MSG_NOSIGNAL)) {
+                push @gather, $sock;
+            } else {
+                _dead_sock($sock);
+            }
+        };
     }
+    alarm(0);
+
     # pass 2: parse responses
+    alarm($SOCK_TIMEOUT);
     foreach my $sock (@gather) {
-        _load_items($sock, \%val);
+        eval {
+            _load_items($sock, \%val);
+        };
     }
+    alarm(0);
+
     if ($self->{'debug'}) {
         while (my ($k, $v) = each %val) {
             print STDERR "MemCache: got $k = $v\n";
@@ -399,12 +462,20 @@ sub _hashfunc {
 sub run_command {
     my ($sock, $cmd) = @_;
     return () unless $sock;
-    send($sock, $cmd, MSG_NOSIGNAL) or return ();
     my @ret;
-    while (my $res = readline($sock)) {
-        push @ret, $res;
-        last if $res eq "END\r\n";
-    }
+    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
+    alarm($SOCK_TIMEOUT);
+    eval {
+        if (send($sock, $cmd, MSG_NOSIGNAL)) {
+            while (my $res = readline($sock)) {
+                push @ret, $res;
+                last if $res eq "END\r\n";
+            }
+        }
+	alarm(0);
+    };
+    @ret = () if $@ eq 'alarm';
+
     return @ret;
 }
 

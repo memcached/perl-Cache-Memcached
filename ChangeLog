@@ -1,3 +1,7 @@
+2003-10-18
+	* implement read/write timeouts everywhere. Now the client shouldn't
+          hang if the server machine goes down unexpectedly. (avva)
+
 2003-10-16
 	* use Storable::nfreeze instead of freeze, so hosts from different
 	  architectures can all use the same data.  (all must use Perl, though.
