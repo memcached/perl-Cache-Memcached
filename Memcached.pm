@@ -1,6 +1,6 @@
 # $Id$
 #
-# Copyright (c) 2003  Brad Fitzpatrick <brad@danga.com>
+# Copyright (c) 2003, 2004  Brad Fitzpatrick <brad@danga.com>
 #
 # See COPYRIGHT section in pod text below for usage and distribution rights.
 #
@@ -65,7 +65,7 @@ sub set_servers {
 
     $self->{'_single_sock'} = undef;
     if (@{$self->{'servers'}} == 1) {
-	$self->{'_single_sock'} = $self->{'servers'}[0];
+    $self->{'_single_sock'} = $self->{'servers'}[0];
     }
 
     return $self;
@@ -223,7 +223,7 @@ sub _oneline {
 
     # state: 0 - writing, 1 - reading, 2 - done
     my $state = defined $line ? 0 : 1;
-    
+
     # the bitsets for select
     my ($rin, $rout, $win, $wout);
     my $nfound;
@@ -653,9 +653,9 @@ sub stats {
     if (!ref($types)) {
         if (!$types) {
             # I don't much care what the default is, it should just
-	    # be something reasonable.  Obviously "reset" should not
-	    # be on the list :) but other types that might go in here
-	    # include maps, cachedump, slabs, or items.
+            # be something reasonable.  Obviously "reset" should not
+            # be on the list :) but other types that might go in here
+            # include maps, cachedump, slabs, or items.
             $types = [ qw( misc malloc sizes self ) ];
         } else {
             $types = [ $types ];
@@ -675,48 +675,48 @@ sub stats {
     # Now handle the other types, passing each type to each host server.
     my @hosts = @{$self->{'buckets'}};
     my %malloc_keys = ( );
-    HOST: foreach my $host (@hosts) {
+  HOST: foreach my $host (@hosts) {
         my $sock = sock_to_host($host);
-        TYPE: foreach my $typename (grep !/^self$/, @$types) {
+      TYPE: foreach my $typename (grep !/^self$/, @$types) {
             my $type = $typename eq 'misc' ? "" : " $typename";
-	    my $line = _oneline($self, $sock, "stats$type\r\n");
-	    if (!$line) {
-	        _dead_sock($sock);
-		next HOST;
-	    }
+            my $line = _oneline($self, $sock, "stats$type\r\n");
+            if (!$line) {
+                _dead_sock($sock);
+                next HOST;
+            }
 
-	    # Some stats are key-value, some are not.  malloc,
-	    # sizes, and the empty string are key-value.
-	    # ("self" was handled separately above.)
+            # Some stats are key-value, some are not.  malloc,
+            # sizes, and the empty string are key-value.
+            # ("self" was handled separately above.)
             if ($typename =~ /^(malloc|sizes|misc)$/) {
-	        # This stat is key-value.
-                LINE: while ($line) {
-	            # We have to munge this data a little.  First, I'm not
-		    # sure why, but 'stats sizes' output begins with NUL.
+                # This stat is key-value.
+              LINE: while ($line) {
+                    # We have to munge this data a little.  First, I'm not
+                    # sure why, but 'stats sizes' output begins with NUL.
                     $line =~ s/^\0//;
 
-		    # And, most lines end in \r\n but 'stats maps' (as of
-		    # July 2003 at least) ends in \n.  An alternative
-		    # would be { local $/="\r\n"; chomp } but this works
-		    # just as well:
+                    # And, most lines end in \r\n but 'stats maps' (as of
+                    # July 2003 at least) ends in \n.  An alternative
+                    # would be { local $/="\r\n"; chomp } but this works
+                    # just as well:
                     $line =~ s/[\r\n]+$//;
 
-		    # OK, process the data until the end, converting it
-		    # into its key-value pairs.
+                    # OK, process the data until the end, converting it
+                    # into its key-value pairs.
                     last LINE if $line eq 'END';
                     my($key, $value) = $line =~ /^(?:STAT )?(\w+)\s(.*)/;
                     if ($key) {
                         $stats_hr->{'hosts'}{$host}{$typename}{$key} = $value;
                     }
-		    $malloc_keys{$key} = 1 if $typename eq 'malloc';
+                    $malloc_keys{$key} = 1 if $typename eq 'malloc';
 
                     # read the next line
                     $line = _oneline($self, $sock);
                 }
             } else {
-	        # This stat is not key-value so just pull it
-		# all out in one blob.
-                LINE: while ($line) {
+                # This stat is not key-value so just pull it
+                # all out in one blob.
+              LINE: while ($line) {
                     $line =~ s/[\r\n]+$//;
                     last LINE if $line eq 'END';
                     $stats_hr->{'hosts'}{$host}{$typename} ||= "";
@@ -732,23 +732,24 @@ sub stats {
     # Now get the sum total of applicable values.  First the misc values.
     foreach my $stat (qw(
         bytes bytes_read bytes_written
-	cmd_get cmd_set connection_structures curr_items
-	get_hits get_misses
-	total_connections total_items
-    )) {
-	$stats_hr->{'total'}{$stat} = 0;
+        cmd_get cmd_set connection_structures curr_items
+        get_hits get_misses
+        total_connections total_items
+        )) {
+        $stats_hr->{'total'}{$stat} = 0;
         foreach my $host (@hosts) {
-	    $stats_hr->{'total'}{$stat} +=
-	    	$stats_hr->{'hosts'}{$host}{'misc'}{$stat};
-	}
+            $stats_hr->{'total'}{$stat} +=
+                $stats_hr->{'hosts'}{$host}{'misc'}{$stat};
+        }
     }
+
     # Then all the malloc values, if any.
     foreach my $malloc_stat (keys %malloc_keys) {
         $stats_hr->{'total'}{"malloc_$malloc_stat"} = 0;
         foreach my $host (@hosts) {
-	    $stats_hr->{'total'}{"malloc_$malloc_stat"} +=
-	        $stats_hr->{'hosts'}{$host}{'malloc'}{$malloc_stat};
-	}
+            $stats_hr->{'total'}{"malloc_$malloc_stat"} +=
+                $stats_hr->{'hosts'}{$host}{'malloc'}{$malloc_stat};
+        }
     }
 
     return $stats_hr;
@@ -760,11 +761,11 @@ sub stats_reset {
 
     $self->init_buckets() unless $self->{'buckets'};
 
-    HOST: foreach my $host (@{$self->{'buckets'}}) {
+  HOST: foreach my $host (@{$self->{'buckets'}}) {
         my $sock = sock_to_host($host);
-	my $ok = _oneline($self, $sock, "stats reset");
+        my $ok = _oneline($self, $sock, "stats reset");
         unless ($ok eq "RESET\r\n") {
-	    _dead_sock($sock);
+            _dead_sock($sock);
         }
     }
     return 1;
