@@ -1,3 +1,8 @@
+2004-04-01
+	* use $! and not %! for perl 5.6 compat (Dave Evans <..@djce.org.uk>)
+	* don't mark whole IP dead anymore when a node is down (Jason Titus <jtitus@postini.com>)
+	* start version numbering (Jamie McCarthy <jamie@mccarthy.vg>)
+
 2004-03-09 (Brad/Avva)
 	* _oneline can return more than one line (but always on a line break),
 	  so caller must decide when it's really time to quit.  had to modify

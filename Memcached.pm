@@ -10,9 +10,10 @@ package Cache::Memcached;
 use strict;
 no strict 'refs';
 use Storable ();
-use Socket qw(MSG_NOSIGNAL PF_INET SOCK_STREAM);
+use Socket qw( MSG_NOSIGNAL PF_INET SOCK_STREAM );
 use IO::Handle ();
 use Time::HiRes ();
+use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 
 # flag definitions
 use constant F_STORABLE => 1;
@@ -22,7 +23,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.0.12";
+$VERSION = "1.13-pre";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -113,7 +114,7 @@ sub _dead_sock {
         my $now = time();
         my ($ip, $port) = ($1, $2);
         my $host = "$ip:$port";
-        $host_dead{$host} = $host_dead{$ip} = $now + $dead_for
+        $host_dead{$host} = $now + $dead_for
             if $dead_for;
         delete $cache_sock{$host};
     }
@@ -147,7 +148,7 @@ sub _connect_sock { # sock, sin, timeout
 
     my $ret = connect($sock, $sin);
 
-    if (!$ret && $timeout && $!{'EINPROGRESS'}) {
+    if (!$ret && $timeout && $!==EINPROGRESS) {
 
         my $win='';
         vec($win, fileno($sock), 1) = 1;
@@ -155,7 +156,7 @@ sub _connect_sock { # sock, sin, timeout
         if (select(undef, $win, undef, $timeout) > 0) {
             $ret = connect($sock, $sin);
             # EISCONN means connected & won't re-connect, so success
-            $ret = 1 if !$ret && $!{'EISCONN'};
+            $ret = 1 if !$ret && $!==EISCONN;
         }
     }
 
@@ -176,9 +177,7 @@ sub sock_to_host { # (host)
     my $now = time();
     my ($ip, $port) = $host =~ /(.*):(\d+)/;
     return undef if
-         $host_dead{$host} && $host_dead{$host} > $now ||
-         $host_dead{$ip} && $host_dead{$ip} > $now;
-
+        $host_dead{$host} && $host_dead{$host} > $now;
     my $sock = "Sock_$host";
     my $proto = $PROTO_TCP ||= getprotobyname('tcp');
 
@@ -269,7 +268,7 @@ sub _oneline {
         if (vec($wout, fileno($sock), 1)) {
             $res = send($sock, $line, $FLAG_NOSIGNAL);
             next
-                if not defined $res and $!{EWOULDBLOCK};
+                if not defined $res and $!==EWOULDBLOCK;
             unless ($res > 0) {
                 _close_sock($sock);
                 return undef;
@@ -284,7 +283,7 @@ sub _oneline {
         if (vec($rout, fileno($sock), 1)) {
             $res = sysread($sock, $ret, 255, $offset);
             next
-                if !defined($res) and $!{EWOULDBLOCK};
+                if !defined($res) and $!==EWOULDBLOCK;
             if ($res == 0) { # catches 0=conn closed or undef=error
                 _close_sock($sock);
                 return undef;
@@ -528,7 +527,7 @@ sub _load_multi {
                            $state{$sock} - $offset{$sock},
                            $offset{$sock});
             return
-                if !defined($res) and $!{EWOULDBLOCK};
+                if !defined($res) and $!==EWOULDBLOCK;
             if ($res == 0) { # catches 0=conn closed or undef=error
                 $dead->($sock);
                 return;
@@ -547,7 +546,7 @@ sub _load_multi {
         $res = sysread($sock, $buf{$sock},
                        2048, $offset{$sock});
         return
-            if !defined($res) and $!{EWOULDBLOCK};
+            if !defined($res) and $!==EWOULDBLOCK;
         if ($res == 0) {
             $dead->($sock);
             return;
@@ -605,7 +604,7 @@ sub _load_multi {
 
         $res = send($sock, $buf{$sock}, $FLAG_NOSIGNAL);
         return
-            if not defined $res and $!{EWOULDBLOCK};
+            if not defined $res and $!==EWOULDBLOCK;
         unless ($res > 0) {
             $dead->($sock);
             return;
@@ -631,7 +630,7 @@ sub _load_multi {
     while(1) {
         if ($active_changed) {
             last unless %reading or %writing; # no sockets left?
-            ($rin, $win) = (undef, undef);
+            ($rin, $win) = ('', '');
             foreach (keys %reading) {
                 vec($rin, fileno($_), 1) = 1;
             }
