@@ -451,7 +451,8 @@ sub get {
 
     # TODO: make a fast path for this?  or just keep using get_multi?
     my $r = $self->get_multi($key);
-    return $r->{$key};
+    my $kval = ref $key ? $key->[1] : $key;
+    return $r->{$kval};
 }
 
 sub get_multi {
