@@ -28,7 +28,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB);
-$VERSION = "1.0.11";
+$VERSION = "1.0.12-pre";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -90,12 +90,13 @@ sub forget_dead_hosts {
 }
 
 sub _dead_sock {
-    my ($sock, $ret) = @_;
+    my ($sock, $ret, $dead_for) = @_;
     if ($sock =~ /^Sock_(.+?):(\d+)$/) {
         my $now = time();
         my ($ip, $port) = ($1, $2);
         my $host = "$ip:$port";
-        $host_dead{$host} = $host_dead{$ip} = $now + 30 + int(rand(10));
+        $host_dead{$host} = $host_dead{$ip} = $now + $dead_for
+            if $dead_for;
         delete $cache_sock{$host};
     }
     return $ret;  # 0 or undef, probably, depending on what caller wants
@@ -153,7 +154,8 @@ sub sock_to_host { # (host)
     socket($sock, PF_INET, SOCK_STREAM, $proto);
     my $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
 
-    return _dead_sock($sock, undef) unless _connect_sock($sock,$sin);
+    return _dead_sock($sock, undef, 20 + int(rand(10)))
+        unless _connect_sock($sock,$sin);
 
     # make the new socket not buffer writes.
     select($sock);
@@ -450,7 +452,7 @@ sub _load_items {
             chomp $decl;
             chomp $decl;
             print STDERR "Error parsing memcached response.  For $sock, got: $decl\n";
-            return 0;
+            return _dead_sock($sock,0);
 	}
     }
 }
