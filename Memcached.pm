@@ -48,6 +48,7 @@ sub new {
     $self->{'stats'} = {};
     $self->{'compress_threshold'} = $args->{'compress_threshold'};
     $self->{'compress_enable'}    = 1;
+    $self->{'stat_callback'} = $args->{'stat_callback'} || undef;
     $self->{'readonly'} = $args->{'readonly'};
 
     # TODO: undocumented
@@ -65,7 +66,7 @@ sub set_servers {
 
     $self->{'_single_sock'} = undef;
     if (@{$self->{'servers'}} == 1) {
-    $self->{'_single_sock'} = $self->{'servers'}[0];
+        $self->{'_single_sock'} = $self->{'servers'}[0];
     }
 
     return $self;
@@ -98,6 +99,11 @@ sub enable_compress {
 
 sub forget_dead_hosts {
     %host_dead = ();
+}
+
+sub set_stat_callback {
+    my ($self, $stat_callback) = @_;
+    $self->{'stat_callback'} = $stat_callback;
 }
 
 sub _dead_sock {
@@ -286,6 +292,7 @@ sub _oneline {
 sub delete {
     my ($self, $key, $time) = @_;
     return 0 if ! $self->{'active'} || $self->{'readonly'};
+    my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
 
@@ -294,6 +301,11 @@ sub delete {
     $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
     my $res = _oneline($self, $sock, $cmd);
+
+    if ($self->{'stat_callback'}) {
+        my $etime = Time::HiRes::time();
+        $self->{'stat_callback'}->($stime, $etime, $sock, 'delete');
+    }
 
     return $res eq "DELETED\r\n";
 }
@@ -313,6 +325,7 @@ sub set {
 sub _set {
     my ($cmdname, $self, $key, $val, $exptime) = @_;
     return 0 if ! $self->{'active'} || $self->{'readonly'};
+    my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
 
@@ -354,6 +367,12 @@ sub _set {
         chop $line; chop $line;
         print STDERR "Cache::Memcache: $cmdname $key = $val ($line)\n";
     }
+
+    if ($self->{'stat_callback'}) {
+        my $etime = Time::HiRes::time();
+        $self->{'stat_callback'}->($stime, $etime, $sock, $cmdname);
+    }
+
     return $res eq "STORED\r\n";
 }
 
@@ -368,6 +387,7 @@ sub decr {
 sub _incrdecr {
     my ($cmdname, $self, $key, $value) = @_;
     return undef if ! $self->{'active'} || $self->{'readonly'};
+    my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
     return undef unless $sock;
     $key = $key->[1] if ref $key;
@@ -376,6 +396,11 @@ sub _incrdecr {
 
     my $line = "$cmdname $key $value\r\n";
     my $res = _oneline($self, $sock, $line);
+
+    if ($self->{'stat_callback'}) {
+        my $etime = Time::HiRes::time();
+        $self->{'stat_callback'}->($stime, $etime, $sock, $cmdname);
+    }
 
     return undef unless $res =~ /^(\d+)/;
     return $1;
@@ -392,6 +417,7 @@ sub get {
 sub get_multi {
     my $self = shift;
     return undef unless $self->{'active'};
+    $self->{'_stime'} = Time::HiRes::time() if $self->{'stat_callback'};
     $self->{'stats'}->{"get_multi"}++;
     my %val;        # what we'll be returning a reference to (realkey -> value)
     my %sock_keys;  # sockref_as_scalar -> [ realkeys ]
@@ -447,6 +473,12 @@ sub _load_multi {
         delete $writing{$sock};
         delete $ret->{$key{$sock}}
             if $key{$sock};
+
+        if ($self->{'stat_callback'}) {
+            my $etime = Time::HiRes::time();
+            $self->{'stat_callback'}->($self->{'_stime'}, $etime, $sock, 'get_multi');
+        }
+
         close $sock;
         _dead_sock($sock);
         $active_changed = 1;
