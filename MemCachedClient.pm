@@ -12,7 +12,7 @@ use Storable ();
 package MemCachedClient;
 
 use vars qw($VERSION);
-$VERSION = "1.0.4";
+$VERSION = "1.0.5";
 
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
@@ -262,9 +262,9 @@ MemCachedClient - client library for memcached (memory cache daemon)
 
 =head1 SYNOPSIS
 
-  use MemCached;
+  use MemCachedClient;
 
-  $memc = new MemCached {
+  $memc = new MemCachedClient {
     'servers' => [ "10.0.0.15:11211", "10.0.0.15:11212", 
                    "10.0.0.17:11211", [ "10.0.0.17:11211", 3 ] ],
     'debug' => 0,
@@ -295,7 +295,7 @@ Takes one parameter, a hashref of options.  The most important key is
 C<servers>, but that can also be set later with the C<set_servers>
 method.  The servers must be an arrayref of hosts, each of which is
 either a scalar of the form C<10.0.0.10:11211> or an arrayref of the
-former and an integer weight value.  (the default weight if
+former and an integer weight value.  (The default weight if
 unspecified is 1.)  It's recommended that weight values be kept as low
 as possible, as this module currently allocates memory for bucket
 distribution proportional to the total host weights.
@@ -311,7 +311,7 @@ diagnostics on STDERR.
 
 =item C<set_servers>
 
-Sets the server list this module distribute key gets and sets between.
+Sets the server list this module distributes key gets and sets between.
 The format is an arrayref of identical form as described in the C<new>
 constructor.
 
@@ -361,7 +361,7 @@ Like C<set>, but only stores in memcache if the key doesn't already exist.
 $mem->replace($key, $value);
 
 Like C<set>, but only stores in memcache if the key already exists.  The
-opposte if C<add>.
+opposite of C<add>.
 
 =back
 
