@@ -21,7 +21,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB);
-$VERSION = "1.0.8-pre";
+$VERSION = "1.0.8";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -591,6 +591,10 @@ This is free software. IT COMES WITHOUT WARRANTY OF ANY KIND.
 See the memcached website:
    http://www.danga.com/memcached/
 
-=head1 AUTHOR
+=head1 AUTHORS
 
 Brad Fitzpatrick <brad@danga.com>
+
+Anatoly Vorobey <mellon@pobox.com>
+
+Brad Whitaker <whitaker@danga.com>

@@ -1,6 +1,7 @@
 2003-10-04
 	* document expiration times in POD (thanks to Tim Bunce
 	  for noting the omission)
+	* release version 1.0.8
 	
 2003-10-03
 	* add connect timeout of 0.25s, for dead host detection.
