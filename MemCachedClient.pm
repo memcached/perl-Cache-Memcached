@@ -369,6 +369,19 @@ sub _hashfunc {
     return $hash;
 }
 
+# returns array of lines, or () on failure.
+sub run_command {
+    my ($sock, $cmd) = @_;
+    return () unless $sock;
+    send($sock, $cmd, MSG_NOSIGNAL) or return ();
+    my @ret;
+    while (my $res = readline($sock)) {
+        push @ret, $res;
+        last if $res eq "END\r\n";
+    }
+    return @ret;
+}
+
 1;
 __END__
 

@@ -1,3 +1,7 @@
+2003-10-01
+	* add run_command API call.  TODO: document, and document
+	  the $exptime on the setters
+		  
 2003-09-30
 	* use send instead of print, so we can set MSG_NOSIGNAL
 	  and not get SIGPIPES, which avoids 3 syscalls of localizing
