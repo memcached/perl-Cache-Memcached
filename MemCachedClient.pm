@@ -521,7 +521,7 @@ before sending the next one.
 
 =item C<set>
 
-$mem->set($key, $value);
+$mem->set($key, $value[, $exptime]);
 
 Unconditionally sets a key to a given value in the memcache.  Returns true
 if it was stored successfully.
@@ -529,15 +529,20 @@ if it was stored successfully.
 The $key can optionally be an arrayref, with the first element being the
 hash value, as described above.
 
+The $exptime (expiration time) defaults to "never" if unspecified.  If
+you want the key to expire in memcached, pass an integer $exptime.  If
+value is less than 60*60*24*30 (30 days), time is assumed to be relative
+from the present.  If larger, it's considered an absolute Unix time.
+
 =item C<add>
 
-$mem->add($key, $value);
+$mem->add($key, $value[, $exptime]);
 
 Like C<set>, but only stores in memcache if the key doesn't already exist.
 
 =item C<replace>
 
-$mem->replace($key, $value);
+$mem->replace($key, $value[, $exptime]);
 
 Like C<set>, but only stores in memcache if the key already exists.  The
 opposite of C<add>.
