@@ -1,0 +1,10 @@
+Version 1.0.6
+	-- incr/decr client support
+	-- make delete optionally take second argument (server now supports
+	   a delay time on delete)
+	-- doc updates from Jamie McCarthy
+	-- better hashing after dead host detection:  new requests go to different
+	   remaining hosts, instead of all to the same one.
+
+Version 1.0.2
+	-- initial release, about.
