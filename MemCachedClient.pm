@@ -12,7 +12,7 @@ use Storable ();
 package MemCachedClient;
 
 use vars qw($VERSION);
-$VERSION = "1.0.3";
+$VERSION = "1.0.4";
 
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
