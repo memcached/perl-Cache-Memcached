@@ -60,6 +60,7 @@ sub sock_to_host { # (host)
                                      Timeout => 1);
     unless ($sock) {
         $host_dead{$host} = $host_dead{$ip} = $now + 60 + int(rand(10));
+        print STDERR "MemCachedClient: marking $host ($ip) as dead\n";
         return undef;
     }
     return $cache_sock{$host} = $sock;
