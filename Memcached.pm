@@ -53,6 +53,9 @@ sub new {
     $self->{'compress_threshold'} = $args->{'compress_threshold'};
     $self->{'compress_enable'}    = 1;
 
+    # TODO: undocumented
+    $self->{'select_timeout'} = $args->{'select_timeout'} || 1.0;
+
     return $self;
 }
 
@@ -342,32 +345,10 @@ sub _incrdecr {
 
 sub get {
     my ($self, $key) = @_;
-    $self->{'stats'}->{"get"}++;
-    
-    my $sock = $self->get_sock($key);
-    return undef unless $sock;
 
-    # get at the real key (we don't need the explicit hash value anymore)
-    $key = $key->[1] if ref $key;
-
-    my %val;
-
-    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-    alarm($SOCK_TIMEOUT);
-    eval {
-        send($sock, "get $key\r\n", $FLAG_NOSIGNAL) ?
-            _load_items($sock, \%val) :
-             _dead_sock($sock, undef);
-        alarm(0);
-        if ($self->{'debug'}) {
-            while (my ($k, $v) = each %val) {
-                print STDERR "MemCache: got $k = $v\n";
-            }
-        }
-    };
-
-    return $val{$key};
+    # TODO: make a fast path for this?  or just keep using get_multi?
+    my $r = $self->get_multi($key);
+    return $r->{$key};
 }
 
 sub get_multi {
@@ -376,48 +357,20 @@ sub get_multi {
     $self->{'stats'}->{"get_multi"}++;
     my %val;        # what we'll be returning a reference to (realkey -> value)
     my %sock_keys;  # sockref_as_scalar -> [ realkeys ]
-    my @socks;      # unique socket refs
     my $sock;
 
     foreach my $key (@_) {
         $sock = $self->get_sock($key);
         next unless $sock;
         $key = ref $key ? $key->[1] : $key;
-        unless ($sock_keys{$sock}) {
-            $sock_keys{$sock} = [];
-            push @socks, $sock;
-        }
         push @{$sock_keys{$sock}}, $key;
     }
     $self->{'stats'}->{"get_keys"} += @_;
-    $self->{'stats'}->{"get_socks"} += @socks;
+    $self->{'stats'}->{"get_socks"} += keys %sock_keys;
 
     local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
 
-    # pass 1: send out requests
-    my @gather;
-
-    alarm($SOCK_TIMEOUT);
-    foreach my $sock (@socks) {
-        eval {
-            if (send($sock, "get @{$sock_keys{$sock}}\r\n", $FLAG_NOSIGNAL)) {
-                push @gather, $sock;
-            } else {
-                _dead_sock($sock);
-            }
-        };
-    }
-    alarm(0);
-
-    # pass 2: parse responses
-    alarm($SOCK_TIMEOUT);
-    foreach my $sock (@gather) {
-        eval {
-            _load_items($sock, \%val);
-        };
-    }
-    alarm(0);
+    _load_multi($self, \%sock_keys, \%val);
 
     if ($self->{'debug'}) {
         while (my ($k, $v) = each %val) {
@@ -427,46 +380,213 @@ sub get_multi {
     return \%val;
 }
 
-sub _load_items {
-    my ($sock, $ret) = @_;
+sub _load_multi {
     use bytes; # return bytes from length()
-    while (1) {
-	my $decl = readline($sock);
-	if ($decl eq "END\r\n") {
-	    return 1;
-	} elsif ($decl =~ /^VALUE (\S+) (\d+) (\d+)\r\n$/) {
-	    my ($rkey, $flags, $len) = ($1, $2, $3);
-            my $bneed = $len+2;  # with \r\n
-            my $offset = 0;
+    my ($self, $sock_keys, $ret) = @_;
 
-            while ($bneed > 0) {
-                my $n = read($sock, $ret->{$rkey}, $bneed, $offset);
-                last unless $n;
-                $offset += $n;
-                $bneed -= $n;
-            }
-
-            unless ($offset == $len+2) {
-                # something messed up.  let's abort.
-                delete $ret->{$rkey};
-                _close_sock($sock);
-                return 0;
-            }
-
-            # remove trailing \r\n
-            chop $ret->{$rkey}; chop $ret->{$rkey};
-
-	    $ret->{$rkey} = Compress::Zlib::memGunzip($ret->{$rkey})
-		if $HAVE_ZLIB && $flags & F_COMPRESS;
-	    $ret->{$rkey} = Storable::thaw($ret->{$rkey})
-		if $flags & F_STORABLE;
-	} else {
-            chomp $decl;
-            chomp $decl;
-            print STDERR "Error parsing memcached response.  For $sock, got: $decl\n";
-            return _dead_sock($sock,0);
-	}
+    # all keyed by a $sock:
+    my %blocks;  # old blocking value
+    my %reading; # bool, whether we're reading from this socket
+    my %writing; # bool, whether we're writing into this socket
+    my %state;   # reading state: 
+                 # 0 = waiting for a line, N = reading N bytes
+    my %buf;     # buffers
+    my %offset;  # offsets to read into buffers
+    my %key;     # current key per socket
+    my %flags;   # flags per socket
+    
+    foreach (keys %$sock_keys) {
+        print STDERR "processing socket $_\n" if $self->{'debug'} >= 2;
+        $blocks{$_} = IO::Handle::blocking($_,0);
+        $writing{$_} = 1;
+        $buf{$_} = "get @{$sock_keys->{$_}}\r\n";
     }
+
+    my $active_changed = 1; # force rebuilding of select sets
+
+    my $dead = sub {
+        my $sock = shift;
+        print STDERR "killing socket $sock\n" if $self->{'debug'} >= 2;
+        delete $reading{$sock};
+        delete $writing{$sock};
+        delete $blocks{$sock};
+        delete $ret->{$key{$sock}}
+            if $key{$sock};
+        close $sock;
+        _dead_sock($sock);
+        $active_changed = 1;
+    };
+
+    my $finalize = sub {
+        my $sock = shift;
+        my $k = $key{$sock};
+
+        # remove trailing \r\n
+        chop $ret->{$k}; chop $ret->{$k};
+
+        unless (length($ret->{$k}) == $state{$sock}-2) {
+            $dead->($sock);
+            return;
+        }
+
+        $ret->{$k} = Compress::Zlib::memGunzip($ret->{$k})
+            if $HAVE_ZLIB && $flags{$sock} & F_COMPRESS;
+        $ret->{$k} = Storable::thaw($ret->{$k})
+            if $flags{$sock} & F_STORABLE;
+    };
+      
+    my $read = sub {
+        my $sock = shift;
+        my $res;
+      
+        # where are we reading into?
+        if ($state{$sock}) { # reading value into $ret
+            $res = sysread($sock, $ret->{$key{$sock}}, 
+                           $state{$sock} - $offset{$sock},
+                           $offset{$sock});
+            return
+                if !defined($res) and $!{EWOULDBLOCK};
+            if ($res == 0) { # catches 0=conn closed or undef=error
+                $dead->($sock);
+                return;
+            }
+            $offset{$sock} += $res;
+            if ($offset{$sock} == $state{$sock}) { # finished reading
+                $finalize->($sock);
+                $state{$sock} = 0; # wait for another VALUE line or END
+                $offset{$sock} = 0; 
+            }
+            return;
+        }
+
+        # we're reading a single line.
+        # first, read whatever's there, but be satisfied with 2048 bytes
+        $res = sysread($sock, $buf{$sock},
+                       2048, $offset{$sock});
+        return
+            if !defined($res) and $!{EWOULDBLOCK};
+        if ($res == 0) {
+            $dead->($sock);
+            return;
+        }
+        $offset{$sock} += $res;
+
+      SEARCH:
+        while(1) { # may have to search many times
+            # do we have a complete END line?
+            if ($buf{$sock} =~ /^END\r\n/) {
+                # okay, finished with this socket
+                delete $reading{$sock};
+                $active_changed = 1;
+                return;
+            }
+
+            # do we have a complete VALUE line?
+            if ($buf{$sock} =~ /^VALUE (\S+) (\d+) (\d+)\r\n/g) {
+                ($key{$sock}, $flags{$sock}, $state{$sock}) = ($1, int($2), $3+2);
+                my $p = pos($buf{$sock});
+                pos($buf{$sock}) = 0;
+                my $len = length($buf{$sock});
+                my $copy = $len-$p > $state{$sock} ? $state{$sock} : $len-$p;
+                $ret->{$key{$sock}} = substr($buf{$sock}, $p, $copy)
+                    if $copy;
+                $offset{$sock} = $copy;
+                substr($buf{$sock}, 0, $p+$copy, ''); # delete the stuff we used
+                if ($offset{$sock} == $state{$sock}) { # have it all?
+                    $finalize->($sock);
+                    $state{$sock} = 0; # wait for another VALUE line or END
+                    $offset{$sock} = 0; 
+                    next SEARCH; # look again
+                }
+                last SEARCH; # buffer is empty now
+            }
+
+            # if we're here probably means we only have a partial VALUE
+            # or END line in the buffer. Could happen with multi-get,
+            # though probably very rarely. Exit the loop and let it read
+            # more.
+            last SEARCH;
+        }
+      
+        # we don't have a complete line, wait and read more when ready
+        return;
+    };
+
+    my $write = sub {
+        my $sock = shift;
+        my $res;
+
+        $res = send($sock, $buf{$sock}, $FLAG_NOSIGNAL);
+        return 
+            if not defined $res and $!{EWOULDBLOCK};
+        unless ($res > 0) {
+            $dead->($sock);
+            return;
+        }
+        if ($res == length($buf{$sock})) { # all sent
+            $buf{$sock} = "";
+            $offset{$sock} = $state{$sock} = 0;
+            # switch the socket from writing state to reading state
+            delete $writing{$sock};
+            $reading{$sock} = 1;
+            $active_changed = 1;
+        } else { # we only succeeded in sending some of it
+            substr($buf{$sock}, 0, $res, ''); # delete the part we sent
+        }
+        return;
+    };
+            
+    # the bitsets for select
+    my ($rin, $rout, $win, $wout);
+    my $nfound;
+
+    # the big select loop
+    while(1) {
+        if ($active_changed) {
+            last unless %reading or %writing; # no sockets left?
+            ($rin, $win) = (undef, undef);
+            foreach (keys %reading) {
+                vec($rin, fileno($_), 1) = 1;
+            }
+            foreach (keys %writing) {
+                vec($win, fileno($_), 1) = 1;
+            }
+            $active_changed = 0;
+        }
+        # TODO: more intelligent cumulative timeout?
+        $nfound = select($rout=$rin, $wout=$win, undef, 
+                         $self->{'select_timeout'});
+        last unless $nfound;
+
+        # TODO: possible robustness improvement: we could select 
+        # writing sockets for reading also, and raise hell if they're 
+        # ready (input unread from last time, etc.)
+        # maybe do that on the first loop only?
+        foreach (keys %writing) {
+            if (vec($wout, fileno($_), 1)) {
+                $write->($_);
+            }
+        }
+        foreach (keys %reading) {
+            if (vec($rout, fileno($_), 1)) {
+                $read->($_);
+            }
+        }
+    }
+          
+    # if there're active sockets left, they need to die
+    foreach (keys %writing) {
+        $dead->($_);
+    }
+    foreach (keys %reading) {
+        $dead->($_);
+    }
+
+    # unblock sockets that made it
+    foreach (keys %blocks) {
+        IO::Handle::blocking($_, $blocks{$_});
+    }
+    return;
 }
 
 sub _hashfunc {
