@@ -444,8 +444,10 @@ sub _load_items {
 	    $ret->{$rkey} = Storable::thaw($ret->{$rkey})
 		if $flags & F_STORABLE;
 	} else {
-	    print STDERR "Error parsing memcached response\n";
-	    return 0;
+            chomp $decl;
+            chomp $decl;
+            print STDERR "Error parsing memcached response.  For $sock, got: $decl\n";
+            return 0;
 	}
     }
 }
