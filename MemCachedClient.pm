@@ -6,7 +6,8 @@
 #
 
 use strict;
-use IO::Socket::INET;
+no strict 'refs';
+use Socket ();
 use Storable ();
 
 package MemCachedClient;
@@ -48,6 +49,12 @@ sub set_servers {
     $self->{'active'} = scalar @{$self->{'servers'}};
     $self->{'buckets'} = undef;
     $self->{'bucketcount'} = 0;
+
+    $self->{'_single_sock'} = undef;
+    if (@{$self->{'servers'}} == 1) {
+	$self->{'_single_sock'} = sock_to_host($self->{'servers'}[0]);
+    }
+
     return $self;
 }
 
@@ -77,11 +84,14 @@ sub sock_to_host { # (host)
     return undef if 
          $host_dead{$host} && $host_dead{$host} > $now || 
          $host_dead{$ip} && $host_dead{$ip} > $now;
-    return $cache_sock{$host} if $cache_sock{$host} && $cache_sock{$host}->connected;
-    my $sock = IO::Socket::INET->new(Proto => "tcp",
-                                     PeerAddr => $host,
-                                     Timeout => 1);
-    unless ($sock) {
+    my $sock = "Sock_$host";
+    return $cache_sock{$host} if $cache_sock{$host} && getpeername($sock);
+    
+    my $proto = getprotobyname('tcp');
+    socket($sock, Socket::PF_INET(), Socket::SOCK_STREAM(), $proto);
+    my $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
+
+    unless (connect($sock,$sin)) {
         $host_dead{$host} = $host_dead{$ip} = $now + 60 + int(rand(10));
         print STDERR "MemCachedClient: marking $host ($ip) as dead\n";
         return undef;
@@ -91,8 +101,8 @@ sub sock_to_host { # (host)
 
 sub get_sock { # (key)
     my ($self, $key) = @_;
+    return $self->{'_single_sock'} if $self->{'_single_sock'};
     return undef unless $self->{'active'};
-    return sock_to_host($self->{'servers'}[0]) if @{$self->{'servers'}} == 1;
     my $hv = ref $key ? int($key->[0]) : _hashfunc($key);
 
     unless ($self->{'buckets'}) {
@@ -107,7 +117,7 @@ sub get_sock { # (key)
         $self->{'bucketcount'} = scalar @{$self->{'buckets'}};
     }
 
-    my $real_key = ref $key eq "ARRAY" ? $key->[1] : $key;
+    my $real_key = ref $key ? $key->[1] : $key;
     my $tries = 0;
     while ($tries++ < 20) {
         my $host = $self->{'buckets'}->[$hv % $self->{'bucketcount'}];
@@ -129,13 +139,13 @@ sub delete {
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
     $self->{'stats'}->{"delete"}++;
-    $key = ref $key eq "ARRAY" ? $key->[1] : $key;
+    $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
-    $sock->print($cmd);
-    $sock->flush;
-    my $line = <$sock>;
-    return 1 if $line eq "DELETED\r\n";
+    syswrite($sock, $cmd) or return 0;
+    my $res;
+    sysread($sock, $res, 255);
+    return 1 if $res eq "DELETED\r\n";
 }
 
 sub add {
@@ -160,8 +170,8 @@ sub _set {
 
     $self->{'stats'}->{$cmdname}++;
     my $flags = 0;
-    $key = ref $key eq "ARRAY" ? $key->[1] : $key;
-    my $raw_val = $self->{'debug'} ? $val : undef;
+    $key = ref $key ? $key->[1] : $key;
+
     if (ref $val) {
         $val = Storable::freeze($val);
         $flags |= F_STORABLE;
@@ -169,7 +179,7 @@ sub _set {
 
     my $len = length($val);
 
-    if ($HAVE_ZLIB && $self->{'compress_threshold'} && $self->{'compress_enable'} &&
+    if ($self->{'compress_threshold'} && $HAVE_ZLIB && $self->{'compress_enable'} &&
         $len >= $self->{'compress_threshold'}) {
 
         my $c_val = Compress::Zlib::memGzip($val);
@@ -184,17 +194,16 @@ sub _set {
     }
 
     $exptime = int($exptime || 0);
-    my $cmd = "$cmdname $key $flags $exptime $len\r\n$val\r\n";
-    $sock->print($cmd);
-    $sock->flush;
-    my $line = <$sock>;
+    syswrite($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n") or return 0;
+    my $line;
+    sysread($sock, $line, 255);
     if ($line eq "STORED\r\n") {
-        print STDERR "MemCache: $cmdname $key = $raw_val (STORED)\n" if $self->{'debug'};
+        print STDERR "MemCache: $cmdname $key = $val (STORED)\n" if $self->{'debug'};
         return 1;
     }
     if ($self->{'debug'}) {
         chop $line; chop $line;
-        print STDERR "MemCache: $cmdname $key = $raw_val ($line)\n";
+        print STDERR "MemCache: $cmdname $key = $val ($line)\n";
     }
     return 0;
 }
@@ -215,9 +224,9 @@ sub _incrdecr {
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
     my $cmd = "$cmdname $key $value\r\n";
-    $sock->print($cmd);
-    $sock->flush;
-    my $line = <$sock>;
+    syswrite($sock, $cmd) or return undef;
+    my $line;
+    sysread($sock, $line, 255);
     return undef unless $line =~ /^(\d)/; 
     return $1;
 }
@@ -230,8 +239,7 @@ sub get {
     return undef unless $sock;
 
     my %val;
-    $sock->print("get $key\r\n");
-    $sock->flush;
+    syswrite($sock, "get $key\r\n") or return undef;
     _load_items($sock, \%val);
 
     if ($self->{'debug'}) {
@@ -252,7 +260,7 @@ sub get_multi {
     foreach my $key (@_) {
         my $sock = $self->get_sock($key);
         next unless $sock;
-        $key = ref $key eq "ARRAY" ? $key->[1] : $key;
+        $key = ref $key ? $key->[1] : $key;
         unless ($sock_keys{$sock}) {
             $sock_keys{$sock} = [];
             push @socks, $sock;
@@ -265,8 +273,7 @@ sub get_multi {
     # pass 1: send out requests
     foreach my $sock (@socks) {
         my $cmd = "get @{$sock_keys{$sock}}\r\n";
-        $sock->print($cmd);
-        $sock->flush;
+	syswrite($sock, $cmd);
     }
     # pass 2: parse responses
     foreach my $sock (@socks) {
@@ -289,44 +296,49 @@ sub _load_items {
     my %flags;
     my %val;
     my %len;   # key -> intended length
+    my $buf = "";
+    
+    # the key currently being read
+    my ($rkey, $flags, $len);
+
+    my $need_more = 1;
 
   ITEM:
     while (1) {
-        my $line = $sock->getline;
-        if ($line =~ /^VALUE (\S+) (\d+) (\d+)\r\n$/o) {
-            my ($rk, $flags, $len) = ($1, $2, $3);
-            $flags{$rk} = $flags;
-            $len{$rk} = $len;
-            my $bytes_read = 0;
-            my $buf;
-            while (defined($line = $sock->getline)) {
-                $bytes_read += length($line);
-                $buf .= $line;
-                if ($bytes_read == $len + 2) {
-                    chop $buf; chop $buf;  # kill \r\n
-                    $val{$rk} = $buf;
-                    next ITEM;
-                }
-                if ($bytes_read > $len) {
-                    # invalid crap from server
-                    return 0;
-                }
-            }
-            next ITEM;
-        }
-        if ($line eq "END\r\n") {
-            foreach (keys %len) {
-                next unless exists $val{$_};
-                next unless length($val{$_}) == $len{$_};
-                $val{$_} = Compress::Zlib::memGunzip($val{$_}) if $HAVE_ZLIB && $flags{$_} & F_COMPRESS;
-                $val{$_} = Storable::thaw($val{$_}) if $flags{$_} & F_STORABLE;
-                $outref->{$_} = $val{$_};
-            }
-            return 1;
-        }
-        if (length($line) == 0) {
-            return 0;
-        }
+	if ($need_more) {
+	    my $read;
+	    my $readn = sysread($sock, $read, 50_000);  # arbitrary
+	    return 0 unless $readn;  # should finish normally (with END), not by empty read
+	    $buf .= $read;
+	    $need_more = 0;  # set later if needed
+	}
+
+	if (! defined $rkey) {
+	    if ($buf =~ s/^VALUE (\S+) (\d+) (\d+)\r\n//so) {
+		($rkey, $flags, $len) = ($1, $2, $3);
+		$flags{$rkey} = $flags;
+		$len{$rkey} = $len;
+	    } elsif ($buf =~ /^END\r\n/) {
+		foreach (keys %len) {
+		    next unless exists $val{$_};
+		    next unless length($val{$_}) == $len{$_};
+		    $val{$_} = Compress::Zlib::memGunzip($val{$_}) if $HAVE_ZLIB && $flags{$_} & F_COMPRESS;
+		    $val{$_} = Storable::thaw($val{$_}) if $flags{$_} & F_STORABLE;
+		    $outref->{$_} = $val{$_};
+		}
+		return 1;
+	    }
+        } else {
+	    if (length($buf) >= $len + 2) {
+		$val{$rkey} = substr($buf,0,$len);
+		# move the buffer down, including the trailing \r\n
+		substr($buf,0,$len+2,"");
+		$rkey = undef;
+	    } else {
+		# we're in the middle of a long value
+		$need_more = 1;
+	    }
+	}
     }
 }
 

@@ -2,6 +2,8 @@
 	* prevent some warnings
 	* faster get() call that doesn't use get_multi()
 	* optimizations for single-server case
+	* use socket APIs directly, instead of uber-slow IO::* modules
+	* new faster _load_items parsing
 	
 2003-09-04	
 	* emit debug when set/add/replace fails, in addition to succeed
