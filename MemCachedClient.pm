@@ -21,7 +21,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB);
-$VERSION = "1.0.8";
+$VERSION = "1.0.9";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -280,7 +280,7 @@ sub _incrdecr {
     send($sock, "$cmdname $key $value\r\n", MSG_NOSIGNAL)
 	or return _dead_sock($sock, undef);
     my $line = readline($sock);
-    return undef unless $line =~ /^(\d)/; 
+    return undef unless $line =~ /^(\d+)/;
     return $1;
 }
 
