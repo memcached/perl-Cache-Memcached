@@ -256,7 +256,7 @@ sub _oneline {
     while(1) {
         if ($copy_state!=$state) {
             last if $state==2;
-            ($rin, $win) = (undef, undef);
+            ($rin, $win) = ('', '');
             vec($rin, fileno($sock), 1) = 1 if $state==1;
             vec($win, fileno($sock), 1) = 1 if $state==0;
             $copy_state = $state;
