@@ -216,7 +216,7 @@ sub _oneline {
     my ($ret, $offset) = (undef, 0);
 
     # state: 0 - writing, 1 - reading, 2 - done
-    my $state = $line ? 0 : 1;
+    my $state = defined $line ? 0 : 1;
     
     # the bitsets for select
     my ($rin, $rout, $win, $wout);
@@ -633,7 +633,7 @@ sub run_command {
     my @ret;
     my $line = $cmd;
     while (my $res = _oneline($self, $sock, $line)) {
-        $line = "";
+        undef $line;
         push @ret, $res;
         last if $res eq "END\r\n" || $res eq "ERROR\r\n";
     }
@@ -705,7 +705,7 @@ sub stats {
 		    $malloc_keys{$key} = 1 if $typename eq 'malloc';
 
                     # read the next line
-                    $line = _oneline($self, $sock, "");
+                    $line = _oneline($self, $sock);
                 }
             } else {
 	        # This stat is not key-value so just pull it
@@ -717,7 +717,7 @@ sub stats {
                     $stats_hr->{'hosts'}{$host}{$typename} .= "$line\n";
 
                     # read the next one
-                    $line = _oneline($self, $sock, "");
+                    $line = _oneline($self, $sock);
                 }
             }
         }
