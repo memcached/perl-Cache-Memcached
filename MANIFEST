@@ -1,5 +1,5 @@
 ChangeLog
-MemCachedClient.pm
+Memcached.pm
 Makefile.PL
 MANIFEST
 TODO

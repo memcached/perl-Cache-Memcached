@@ -5,7 +5,7 @@
 # See COPYRIGHT section in pod text below for usage and distribution rights.
 #
 
-package MemCachedClient;
+package Cache::Memcached;
 
 use strict;
 no strict 'refs';
@@ -25,7 +25,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB);
-$VERSION = "1.0.10-pre";
+$VERSION = "1.0.10";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -486,32 +486,32 @@ __END__
 
 =head1 NAME
 
-MemCachedClient - client library for memcached (memory cache daemon)
+Cache::Memcached - client library for memcached (memory cache daemon)
 
 =head1 SYNOPSIS
 
-  use MemCachedClient;
+  use Cache::Memcached;
 
-  $memc = new MemCachedClient {
+  $memd = new Cache::Memcached {
     'servers' => [ "10.0.0.15:11211", "10.0.0.15:11212", 
                    "10.0.0.17:11211", [ "10.0.0.17:11211", 3 ] ],
     'debug' => 0,
     'compress_threshold' => 10_000,
   };
-  $memc->set_servers($array_ref);
-  $memc->set_compress_threshold(10_000);
-  $memc->enable_compress(0);
+  $memd->set_servers($array_ref);
+  $memd->set_compress_threshold(10_000);
+  $memd->enable_compress(0);
 
-  $memc->set("my_key", "Some value");
-  $memc->set("object_key", { 'complex' => [ "object", 2, 4 ]});
+  $memd->set("my_key", "Some value");
+  $memd->set("object_key", { 'complex' => [ "object", 2, 4 ]});
 
-  $val = $memc->get("my_key");
-  $val = $memc->get("object_key");
+  $val = $memd->get("my_key");
+  $val = $memd->get("object_key");
   if ($val) { print $val->{'complex'}->[2]; }
 
-  $memc->incr("key");
-  $memc->decr("key");
-  $memc->incr("key", 2);
+  $memd->incr("key");
+  $memd->decr("key");
+  $memd->incr("key", 2);
 
 =head1 DESCRIPTION
 
@@ -569,7 +569,7 @@ isn't set, but has an overriding effect if it is.
 
 =item C<get>
 
-my $val = $mem->get($key);
+my $val = $memd->get($key);
 
 Retrieves a key from the memcache.  Returns the value (automatically
 thawed with Storable, if necessary) or undef.
@@ -582,7 +582,7 @@ unique id as the hash value.
 
 =item C<get_multi>
 
-my $hashref = $mem->get_multi(@keys);
+my $hashref = $memd->get_multi(@keys);
 
 Retrieves multiple keys from the memcache doing just one query.
 Returns a hashref of key/value pairs that were available.
@@ -594,7 +594,7 @@ before sending the next one.
 
 =item C<set>
 
-$mem->set($key, $value[, $exptime]);
+$memd->set($key, $value[, $exptime]);
 
 Unconditionally sets a key to a given value in the memcache.  Returns true
 if it was stored successfully.
@@ -609,20 +609,20 @@ from the present.  If larger, it's considered an absolute Unix time.
 
 =item C<add>
 
-$mem->add($key, $value[, $exptime]);
+$memd->add($key, $value[, $exptime]);
 
 Like C<set>, but only stores in memcache if the key doesn't already exist.
 
 =item C<replace>
 
-$mem->replace($key, $value[, $exptime]);
+$memd->replace($key, $value[, $exptime]);
 
 Like C<set>, but only stores in memcache if the key already exists.  The
 opposite of C<add>.
 
 =item C<incr>
 
-$mem->incr($key[, $value]);
+$memd->incr($key[, $value]);
 
 Sends a command to the server to atomically increment the value for
 $key by $value, or by 1 if $value is undefined.  Returns undef if $key
@@ -632,11 +632,20 @@ is not checked.  Be aware of values approaching 2**32.  See decr.
 
 =item C<decr>
 
-$mem->decr($key[, $value]);
+$memd->decr($key[, $value]);
 
 Like incr, but decrements.  Unlike incr, underflow is checked and new
 values are capped at 0.  If server value is 1, a decrement of 2
 returns 0, not -1.
+
+=item C<disconnect_all>
+
+$memd->disconnect_all();
+
+Closes all cached sockets to all memcached servers.  You must do this
+if your program forks and the parent has used this module at all.
+Otherwise the children will try to use cached sockets and they'll fight
+(as children do) and garble the client/server protocol.
 
 =back
 
