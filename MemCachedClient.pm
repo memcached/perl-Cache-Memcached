@@ -147,8 +147,8 @@ sub _set {
 }
 
 sub get {
-    my ($key) = @_;
-    my $val = get_multi($key);
+    my ($self, $key) = @_;
+    my $val = $self->get_multi($key);
     return undef unless $val;
     return $val->{$key};
 }
