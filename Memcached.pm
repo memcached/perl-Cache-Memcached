@@ -53,7 +53,7 @@ sub new {
     my ($args) = @_;
 
     $self->set_servers($args->{'servers'});
-    $self->{'debug'} = $args->{'debug'};
+    $self->{'debug'} = $args->{'debug'} || 0;
     $self->{'no_rehash'} = $args->{'no_rehash'};
     $self->{'stats'} = {};
     $self->{'compress_threshold'} = $args->{'compress_threshold'};
