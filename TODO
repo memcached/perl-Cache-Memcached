@@ -1,2 +1,2 @@
--- provide option to not do remapping, to avoid the "netsplit
-   problem".  (some apps might have a problem with that)
+-- jamie's stats patches
+

@@ -48,6 +48,7 @@ sub new {
 
     $self->set_servers($args->{'servers'});
     $self->{'debug'} = $args->{'debug'};
+    $self->{'no_rehash'} = $args->{'no_rehash'};
     $self->{'stats'} = {};
     $self->{'compress_threshold'} = $args->{'compress_threshold'};
     $self->{'compress_enable'}    = 1;
@@ -73,6 +74,11 @@ sub set_servers {
 sub set_debug {
     my ($self, $dbg) = @_;
     $self->{'debug'} = $dbg;
+}
+
+sub set_norehash {
+    my ($self, $val) = @_;
+    $self->{'no_rehash'} = $val;
 }
 
 sub set_compress_threshold {
@@ -189,6 +195,7 @@ sub get_sock { # (key)
         my $host = $self->{'buckets'}->[$hv % $self->{'bucketcount'}];
         my $sock = sock_to_host($host);
         return $sock if $sock;
+        return undef if $sock->{'no_rehash'};
         $hv += _hashfunc($tries . $real_key);  # stupid, but works
     }
     return undef;
@@ -550,6 +557,10 @@ Use C<compress_threshold> to set a compression threshold, in bytes.
 Values larger than this threshold will be compressed by C<set> and
 decompressed by C<get>.
 
+Use C<no_rehash> to disable finding a new memcached server when one
+goes down.  Your application may or may not need this, depending on
+your expirations and key usage.
+
 The other useful key is C<debug>, which when set to true will produce
 diagnostics on STDERR.
 
@@ -568,6 +579,10 @@ constructor.
 =item C<set_debug>
 
 Sets the C<debug> flag.  See C<new> constructor for more information.
+
+=item C<set_norehash>
+
+Sets the C<no_rehash> flag.  See C<new> constructor for more information.
 
 =item C<set_compress_threshold>
 
