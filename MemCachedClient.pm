@@ -238,6 +238,9 @@ sub get {
     my $sock = $self->get_sock($key);
     return undef unless $sock;
 
+    # get at the real key (we don't need the explicit hash value anymore)
+    $key = $key->[1] if ref $key;
+
     my %val;
     syswrite($sock, "get $key\r\n") or return undef;
     _load_items($sock, \%val);
@@ -302,6 +305,11 @@ sub _load_items {
     my ($rkey, $flags, $len);
 
     my $need_more = 1;
+
+    # FIXME: it's kinda lame how this works, reading and shifting down, over and over.
+    # it'd be better to read a whole bunch (100k or so), and move the ^VALUE regexp around
+    # with pos(), and extracting substrings, without appending to $buf and moving $buf
+    # around.
 
   ITEM:
     while (1) {
