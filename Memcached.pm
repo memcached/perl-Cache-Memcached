@@ -13,10 +13,6 @@ use Storable ();
 use Socket qw(MSG_NOSIGNAL PF_INET SOCK_STREAM);
 use IO::Handle ();
 
-BEGIN {
-    eval "use Time::HiRes qw (alarm);";
-}
-
 # flag definitions
 use constant F_STORABLE => 1;
 use constant F_COMPRESS => 2;
@@ -113,12 +109,10 @@ sub _dead_sock {
 
 sub _close_sock {
     my ($sock) = @_;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
     if ($sock =~ /^Sock_(.+?):(\d+)$/) {
         my ($ip, $port) = ($1, $2);
         my $host = "$ip:$port";
-        alarm($SOCK_TIMEOUT);
-        eval { close $sock; alarm(0); };
+        close $sock;
         delete $cache_sock{$host};
     }
 }
@@ -127,7 +121,7 @@ sub _connect_sock { # sock, sin, timeout
     my ($sock, $sin, $timeout) = @_;
     $timeout ||= 0.25;
 
-    my $block = IO::Handle::blocking($sock, 0) if $timeout;
+    IO::Handle::blocking($sock, 1) unless $timeout;
 
     my $ret = connect($sock, $sin);
 
@@ -143,7 +137,7 @@ sub _connect_sock { # sock, sin, timeout
         }
     }
 
-    IO::Handle::blocking($sock, $block) if $timeout;
+    IO::Handle::blocking($sock, 0);
     return $ret;
 }
 
@@ -210,15 +204,78 @@ sub init_buckets {
 
 sub disconnect_all {
     my $sock;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-    alarm($SOCK_TIMEOUT);
     foreach $sock (values %cache_sock) {
-        eval { close $sock; };
-        alarm($SOCK_TIMEOUT) if $@ eq 'alarm'; #re-alarm
+        close $sock;
     }
-    alarm(0);
     %cache_sock = ();
 }
+
+sub _oneline {
+    my ($self, $sock, $line) = @_;
+    my $res;
+    my ($ret, $offset) = (undef, 0);
+
+    # state: 0 - writing, 1 - reading, 2 - done
+    my $state = $line ? 0 : 1;
+    
+    # the bitsets for select
+    my ($rin, $rout, $win, $wout);
+    my $nfound;
+
+    my $copy_state = -1;
+    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
+
+    # the select loop
+    while(1) {
+        if ($copy_state!=$state) {
+            last if $state==2;
+            ($rin, $win) = (undef, undef);
+            vec($rin, fileno($sock), 1) = 1 if $state==1;
+            vec($win, fileno($sock), 1) = 1 if $state==0;
+            $copy_state = $state;
+        }
+        $nfound = select($rout=$rin, $wout=$win, undef,
+                         $self->{'select_timeout'});
+        last unless $nfound;
+
+        if (vec($wout, fileno($sock), 1)) {
+            $res = send($sock, $line, $FLAG_NOSIGNAL);
+            next
+                if not defined $res and $!{EWOULDBLOCK};
+            unless ($res > 0) {
+                _close_sock($sock);
+                return undef;
+            }
+            if ($res == length($line)) { # all sent
+                $state = 1;
+            } else { # we only succeeded in sending some of it
+                substr($line, 0, $res, ''); # delete the part we sent
+            }
+        }
+
+        if (vec($rout, fileno($sock), 1)) {
+            $res = sysread($sock, $ret, 255, $offset);
+            next
+                if !defined($res) and $!{EWOULDBLOCK};
+            if ($res == 0) { # catches 0=conn closed or undef=error
+                _close_sock($sock);
+                return undef;
+            }
+            $offset += $res;
+            if (rindex($ret, "\r\n") + 2 == length($ret)) {
+                $state = 2;
+            }
+        }
+    }
+
+    unless ($state == 2) {
+        _dead_sock($sock); # improperly finished
+        return undef;
+    }
+
+    return $ret;
+}
+
 
 sub delete {
     my ($self, $key, $time) = @_;
@@ -230,17 +287,7 @@ sub delete {
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
-    my $res = "";
-
-    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-    alarm($SOCK_TIMEOUT);
-    eval {
-        send($sock, $cmd, $FLAG_NOSIGNAL) ?
-            ($res = readline($sock)) :
-            _dead_sock($sock);
-        alarm(0);
-    };
+    my $res = _oneline($self, $sock, $cmd);
 
     return $res eq "DELETED\r\n";
 }
@@ -293,26 +340,15 @@ sub _set {
     $exptime = int($exptime || 0);
 
     local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-    alarm($SOCK_TIMEOUT);
-    my ($res, $line) = (0, "");
-    eval {
-        $res = send($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n", $FLAG_NOSIGNAL);
-        if ($res) {
-            $line = readline($sock);
-            $res = $line eq "STORED\r\n";
-        }
-        else {
-            _dead_sock($sock);
-        }
-        alarm(0);
-    };
+    my $line = "$cmdname $key $flags $exptime $len\r\n$val\r\n";
+
+    my $res = _oneline($self, $sock, $line);
 
     if ($self->{'debug'} && $line) {
         chop $line; chop $line;
         print STDERR "Cache::Memcache: $cmdname $key = $val ($line)\n";
     }
-    return $res;
+    return $res eq "STORED\r\n";
 }
 
 sub incr {
@@ -332,18 +368,10 @@ sub _incrdecr {
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
 
-    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-    alarm($SOCK_TIMEOUT);
-    my $line;
-    eval {
-        send($sock, "$cmdname $key $value\r\n", $FLAG_NOSIGNAL) ?
-            $line = readline($sock) :
-            _dead_sock($sock);
-        alarm(0);
-    };
+    my $line = "$cmdname $key $value\r\n";
+    my $res = _oneline($self, $sock, $line);
 
-    return undef unless $line =~ /^(\d+)/;
+    return undef unless $res =~ /^(\d+)/;
     return $1;
 }
 
@@ -389,7 +417,6 @@ sub _load_multi {
     my ($self, $sock_keys, $ret) = @_;
 
     # all keyed by a $sock:
-    my %blocks;  # old blocking value
     my %reading; # bool, whether we're reading from this socket
     my %writing; # bool, whether we're writing into this socket
     my %state;   # reading state:
@@ -401,7 +428,6 @@ sub _load_multi {
 
     foreach (keys %$sock_keys) {
         print STDERR "processing socket $_\n" if $self->{'debug'} >= 2;
-        $blocks{$_} = IO::Handle::blocking($_,0);
         $writing{$_} = 1;
         $buf{$_} = "get @{$sock_keys->{$_}}\r\n";
     }
@@ -413,7 +439,6 @@ sub _load_multi {
         print STDERR "killing socket $sock\n" if $self->{'debug'} >= 2;
         delete $reading{$sock};
         delete $writing{$sock};
-        delete $blocks{$sock};
         delete $ret->{$key{$sock}}
             if $key{$sock};
         close $sock;
@@ -590,10 +615,6 @@ sub _load_multi {
         $dead->($_);
     }
 
-    # unblock sockets that made it
-    foreach (keys %blocks) {
-        IO::Handle::blocking($_, $blocks{$_});
-    }
     return;
 }
 
@@ -607,23 +628,15 @@ sub _hashfunc {
 
 # returns array of lines, or () on failure.
 sub run_command {
-    my ($sock, $cmd) = @_;
+    my ($self, $sock, $cmd) = @_;
     return () unless $sock;
     my @ret;
-    local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-    alarm($SOCK_TIMEOUT);
-    eval {
-        if (send($sock, $cmd, $FLAG_NOSIGNAL)) {
-            while (my $res = readline($sock)) {
-                push @ret, $res;
-                last if $res eq "END\r\n";
-            }
-        }
-	alarm(0);
-    };
-    @ret = () if $@ eq 'alarm';
-
+    my $line = $cmd;
+    while (my $res = _oneline($self, $sock, $line)) {
+        $line = "";
+        push @ret, $res;
+        last if $res eq "END\r\n" || $res eq "ERROR\r\n";
+    }
     return @ret;
 }
 
@@ -660,14 +673,8 @@ sub stats {
         my $sock = sock_to_host($host);
         TYPE: foreach my $typename (grep !/^self$/, @$types) {
             my $type = $typename eq 'misc' ? "" : " $typename";
-	    my $ok = 0;
-	    local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-	    alarm($SOCK_TIMEOUT);
-	    eval {
-		$ok = send($sock, "stats$type\r\n", MSG_NOSIGNAL);
-		alarm(0);
-	    };
-	    if (!$ok) {
+	    my $line = _oneline($self, $sock, "stats$type\r\n");
+	    if (!$line) {
 	        _dead_sock($sock);
 		next HOST;
 	    }
@@ -677,35 +684,40 @@ sub stats {
 	    # ("self" was handled separately above.)
             if ($typename =~ /^(malloc|sizes|misc)$/) {
 	        # This stat is key-value.
-                LINE: while (my $line = readline($sock)) {
+                LINE: while ($line) {
 	            # We have to munge this data a little.  First, I'm not
 		    # sure why, but 'stats sizes' output begins with NUL.
                     $line =~ s/^\0//;
+
 		    # And, most lines end in \r\n but 'stats maps' (as of
 		    # July 2003 at least) ends in \n.  An alternative
 		    # would be { local $/="\r\n"; chomp } but this works
 		    # just as well:
                     $line =~ s/[\r\n]+$//;
+
 		    # OK, process the data until the end, converting it
 		    # into its key-value pairs.
                     last LINE if $line eq 'END';
                     my($key, $value) = $line =~ /^(?:STAT )?(\w+)\s(.*)/;
-                    next LINE unless $key;
-                    if ($typename) {
+                    if ($key) {
                         $stats_hr->{'hosts'}{$host}{$typename}{$key} = $value;
-                    } else {
-                        $stats_hr->{'hosts'}{$host}{$key} = $value;
                     }
 		    $malloc_keys{$key} = 1 if $typename eq 'malloc';
+
+                    # read the next line
+                    $line = _oneline($self, $sock, "");
                 }
             } else {
 	        # This stat is not key-value so just pull it
 		# all out in one blob.
-                LINE: while (my $line .= readline($sock)) {
+                LINE: while ($line) {
                     $line =~ s/[\r\n]+$//;
                     last LINE if $line eq 'END';
                     $stats_hr->{'hosts'}{$host}{$typename} ||= "";
                     $stats_hr->{'hosts'}{$host}{$typename} .= "$line\n";
+
+                    # read the next one
+                    $line = _oneline($self, $sock, "");
                 }
             }
         }
@@ -744,16 +756,9 @@ sub stats_reset {
 
     HOST: foreach my $host (@{$self->{'buckets'}}) {
         my $sock = sock_to_host($host);
-	my $ok = 0;
-        local $SIG{'ALRM'} = sub { _dead_sock($sock); die "alarm"; };
-        alarm($SOCK_TIMEOUT);
-        eval {
-	    $ok = send($sock, "stats reset", MSG_NOSIGNAL);
-	    alarm(0);
-        };
-        if (!$ok) {
+	my $ok = _oneline($self, $sock, "stats reset");
+        unless ($ok eq "RESET\r\n") {
 	    _dead_sock($sock);
-	    next HOST;
         }
     }
     return 1;
