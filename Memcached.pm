@@ -27,11 +27,12 @@ use constant COMPRESS_SAVINGS => 0.20; # percent
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
 $VERSION = "1.0.12-pre";
 
-$FLAG_NOSIGNAL = 0;
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
-    $FLAG_NOSIGNAL = eval { MSG_NOSIGNAL } || 0;
 }
+
+$FLAG_NOSIGNAL = 0;
+eval { $FLAG_NOSIGNAL = MSG_NOSIGNAL; };
 
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
