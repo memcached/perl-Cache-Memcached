@@ -25,7 +25,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.0.12-pre";
+$VERSION = "1.0.12";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -509,6 +509,10 @@ sub _load_multi {
             # or END line in the buffer. Could happen with multi-get,
             # though probably very rarely. Exit the loop and let it read
             # more.
+
+            # but first, make sure subsequent reads don't destroy our
+            # partial VALUE/END line.
+            $offset{$sock} = length($buf{$sock});
             last SEARCH;
         }
 

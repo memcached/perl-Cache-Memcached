@@ -1,3 +1,9 @@
+2003-02-03
+	* fix bug with 2k read boundaries falling in the middle
+	  of "VALUE ..." or "END" lines, thus halting future
+	  parsing and responses.  (eek!)
+	* version 1.0.12
+	
 2003-12-01
 	* merge stats/stats_reset patch from Jamie McCarthy
 	* trailing whitespace cleanup
