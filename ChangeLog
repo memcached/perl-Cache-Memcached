@@ -1,4 +1,7 @@
 2004-07-27
+	* release 1.14
+	
+2004-07-27
 	* kill buggy, slow ord() _hashfunc, replace with crc32.
 	  this adds String::CRC32 as a dependency.  thanks to
 	  everybody's feedback on the mailing list.
