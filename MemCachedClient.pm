@@ -12,7 +12,7 @@ use Storable ();
 package MemCachedClient;
 
 use vars qw($VERSION);
-$VERSION = "1.0.5";
+$VERSION = "1.0.6";
 
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
@@ -83,12 +83,13 @@ sub get_sock { # (key)
         $self->{'bucketcount'} = scalar @{$self->{'buckets'}};
     }
 
+    my $real_key = ref $key eq "ARRAY" ? $key->[1] : $key;
     my $tries = 0;
     while ($tries++ < 20) {
         my $host = $self->{'buckets'}->[$hv % $self->{'bucketcount'}];
         my $sock = sock_to_host($host);
         return $sock if $sock;
-        $hv += _hashfunc($tries);  # stupid, but works
+        $hv += _hashfunc($tries . $real_key);  # stupid, but works
     }
     return undef;
 }
@@ -149,6 +150,29 @@ sub _set {
         return 1;
     }
     return 0;
+}
+
+sub incr {
+    _incrdecr("incr", @_);
+}
+
+sub decr {
+    _incrdecr("decr", @_);
+}
+
+sub _incrdecr {
+    my ($cmdname, $self, $key, $value) = @_;
+    return undef unless $self->{'active'};
+    my $sock = $self->get_sock($key);
+    return undef unless $sock;
+    $self->{'stats'}->{$cmdname}++;
+    $value = 1 unless defined $value;
+    my $cmd = "$cmdname $key $value\r\n";
+    $sock->print($cmd);
+    $sock->flush;
+    my $line = <$sock>;
+    return undef unless $line =~ /^(\d)/; 
+    return $1;
 }
 
 sub get {
@@ -278,6 +302,10 @@ MemCachedClient - client library for memcached (memory cache daemon)
   $val = $memc->get("object_key");
   if ($val) { print $val->{'complex'}->[2]; }
 
+  $memc->incr("key");
+  $memc->decr("key");
+  $memc->incr("key", 2);
+
 =head1 DESCRIPTION
 
 This is the Perl API for memcached, a distributed memory cache daemon.
@@ -362,6 +390,24 @@ $mem->replace($key, $value);
 
 Like C<set>, but only stores in memcache if the key already exists.  The
 opposite of C<add>.
+
+=item C<incr>
+
+$mem->incr($key[, $value]);
+
+Sends a command to the server to atomically increment the value for
+$key by $value, or by 1 if $value is undefined.  Returns undef if $key
+doesn't exist on server, otherwise it returns the new value after
+incrementing.  Value should be zero or greater.  Overflow on server
+is not checked.  Be aware of values approaching 2**32.  See decr.
+
+=item C<decr>
+
+$mem->decr($key[, $value]);
+
+Like incr, but decrements.  Unlike incr, underflow is checked and new
+values are capped at 0.  If server value is 1, a decrement of 2
+returns 0, not -1.
 
 =back
 
