@@ -11,6 +11,7 @@ use strict;
 no strict 'refs';
 use Storable ();
 use Socket qw(MSG_NOSIGNAL PF_INET SOCK_STREAM);
+use IO::Handle ();
 
 # flag definitions
 use constant F_STORABLE => 1;
@@ -101,6 +102,30 @@ sub _close_sock {
     }
 }
 
+sub _connect_sock { # sock, sin, timeout
+    my ($sock, $sin, $timeout) = @_;
+    $timeout ||= 0.25;
+
+    my $block = IO::Handle::blocking($sock, 0) if $timeout;
+
+    my $ret = connect($sock, $sin);
+
+    if (!$ret && $timeout && $!{'EINPROGRESS'}) {
+
+        my $win='';
+        vec($win, fileno($sock), 1) = 1;
+    
+        if (select(undef, $win, undef, $timeout) > 0) {
+            $ret = connect($sock, $sin);
+            # EISCONN means connected & won't re-connect, so success
+            $ret = 1 if !$ret && $!{'EISCONN'};
+        }
+    }
+
+    IO::Handle::blocking($sock, $block) if $timeout;
+    return $ret;
+}
+
 sub sock_to_host { # (host)
     my $host = $_[0];
     return $cache_sock{$host} if $cache_sock{$host};
@@ -117,7 +142,7 @@ sub sock_to_host { # (host)
     socket($sock, PF_INET, SOCK_STREAM, $proto);
     my $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
 
-    return _dead_sock($sock, undef) unless (connect($sock,$sin));
+    return _dead_sock($sock, undef) unless _connect_sock($sock,$sin);
 
     # make the new socket not buffer writes.
     select($sock);
