@@ -669,14 +669,15 @@ sub _hashfunc {
 sub run_command {
     my ($self, $sock, $cmd) = @_;
     return () unless $sock;
-    my @ret;
+    my $ret;
     my $line = $cmd;
     while (my $res = _oneline($self, $sock, $line)) {
         undef $line;
-        push @ret, $res;
-        last if $res eq "END\r\n" || $res eq "ERROR\r\n";
+	$ret .= $res;
+        last if $ret =~ /(?:END|ERROR)\r\n$/;
     }
-    return @ret;
+    chop $ret; chop $ret;
+    return map { "$_\r\n" } split(/\r\n/, $ret);
 }
 
 sub stats {
