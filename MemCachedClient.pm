@@ -249,6 +249,7 @@ sub _incrdecr {
     return undef unless $self->{'active'};
     my $sock = $self->get_sock($key);
     return undef unless $sock;
+    $key = $key->[1] if ref $key;
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
     send($sock, "$cmdname $key $value\r\n", MSG_NOSIGNAL)

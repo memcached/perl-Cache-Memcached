@@ -1,3 +1,6 @@
+2003-10-02
+	* fix _incrdecr with explicit-hashvalue keys (whitaker)
+	
 2003-10-01
 	* add run_command API call.  TODO: document, and document
 	  the $exptime on the setters
