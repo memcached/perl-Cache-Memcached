@@ -1,3 +1,10 @@
+2003-09-30
+	* use send instead of print, so we can set MSG_NOSIGNAL
+	  and not get SIGPIPES, which avoids 3 syscalls of localizing
+	  $SIG{PIPE} and sends everything at once, instead of 4k
+	  stdio chunks.  in review:  stdio buffered in, send unbuffered
+	  out.  TODO:  setvbuf so reads are buffered at more than 4k.
+
 2003-09-29
 	* yet faster parsing
 	* switch to stdio/perlio instead of raw io: more correct,

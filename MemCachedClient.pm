@@ -5,12 +5,12 @@
 # See COPYRIGHT section in pod text below for usage and distribution rights.
 #
 
+package MemCachedClient;
+
 use strict;
 no strict 'refs';
-use Socket ();
 use Storable ();
-
-package MemCachedClient;
+use Socket qw(MSG_NOSIGNAL PF_INET SOCK_STREAM);
 
 # flag definitions
 use constant F_STORABLE => 1;
@@ -114,7 +114,7 @@ sub sock_to_host { # (host)
     my $sock = "Sock_$host";
     my $proto = $PROTO_TCP ||= getprotobyname('tcp');
 
-    socket($sock, Socket::PF_INET(), Socket::SOCK_STREAM(), $proto);
+    socket($sock, PF_INET, SOCK_STREAM, $proto);
     my $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
 
     return _dead_sock($sock, undef) unless (connect($sock,$sin));
@@ -170,7 +170,7 @@ sub delete {
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
-    print $sock $cmd or return _dead_sock($sock, 0);
+    send($sock, $cmd, MSG_NOSIGNAL) or return _dead_sock($sock, 0);
     my $res = readline($sock);
     return $res eq "DELETED\r\n";
 }
@@ -221,7 +221,7 @@ sub _set {
     }
 
     $exptime = int($exptime || 0);
-    print $sock "$cmdname $key $flags $exptime $len\r\n$val\r\n"
+    send($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n", MSG_NOSIGNAL)
         or return _dead_sock($sock, 0);
 
     my $line = readline($sock);
@@ -251,7 +251,7 @@ sub _incrdecr {
     return undef unless $sock;
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
-    print $sock "$cmdname $key $value\r\n" 
+    send($sock, "$cmdname $key $value\r\n", MSG_NOSIGNAL)
 	or return _dead_sock($sock, undef);
     my $line = readline($sock);
     return undef unless $line =~ /^(\d)/; 
@@ -269,7 +269,7 @@ sub get {
     $key = $key->[1] if ref $key;
 
     my %val;
-    print $sock "get $key\r\n" or return _dead_sock($sock, undef);
+    send($sock, "get $key\r\n", MSG_NOSIGNAL) or return _dead_sock($sock, undef);
     _load_items($sock, \%val);
 
     if ($self->{'debug'}) {
@@ -303,7 +303,7 @@ sub get_multi {
     # pass 1: send out requests
     my @gather;
     foreach my $sock (@socks) {
-        if (print $sock "get @{$sock_keys{$sock}}\r\n") {
+        if (send($sock, "get @{$sock_keys{$sock}}\r\n", MSG_NOSIGNAL)) {
             push @gather, $sock;
         } else {
             _dead_sock($sock);
