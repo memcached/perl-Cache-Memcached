@@ -330,14 +330,26 @@ sub _load_items {
 	    return 1;
 	} elsif ($decl =~ /^VALUE (\S+) (\d+) (\d+)\r\n$/) {
 	    my ($rkey, $flags, $len) = ($1, $2, $3);
-	    my $n = read($sock, $ret->{$rkey}, $len);
-	    unless ($n == $len) {
-		# something messed up.  let's abort.
-		delete $ret->{$rkey};
-		_close_sock($sock);
-		return 0;
-	    }
-	    seek($sock,2,1); # seek past the \r\n
+            my $bneed = $len+2;  # with \r\n
+            my $offset = 0;
+
+            while ($bneed > 0) {
+                my $n = read($sock, $ret->{$rkey}, $bneed, $offset);
+                last unless $n;
+                $offset += $n;
+                $bneed -= $n;
+            }
+
+            unless ($offset == $len+2) {
+                # something messed up.  let's abort.
+                delete $ret->{$rkey};
+                _close_sock($sock);
+                return 0;
+            }
+
+            # remove trailing \r\n
+            chop $ret->{$rkey}; chop $ret->{$rkey};
+
 	    $ret->{$rkey} = Compress::Zlib::memGunzip($ret->{$rkey})
 		if $HAVE_ZLIB && $flags & F_COMPRESS;
 	    $ret->{$rkey} = Storable::thaw($ret->{$rkey})
