@@ -12,6 +12,7 @@ no strict 'refs';
 use Storable ();
 use Socket qw(MSG_NOSIGNAL PF_INET SOCK_STREAM);
 use IO::Handle ();
+use Time::HiRes ();
 
 # flag definitions
 use constant F_STORABLE => 1;
