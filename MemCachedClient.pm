@@ -29,6 +29,8 @@ BEGIN {
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
 
+my $PROTO_TCP;
+
 sub new {
     my ($class, $args) = @_;
     my $self = {};
@@ -52,7 +54,7 @@ sub set_servers {
 
     $self->{'_single_sock'} = undef;
     if (@{$self->{'servers'}} == 1) {
-	$self->{'_single_sock'} = sock_to_host($self->{'servers'}[0]);
+	$self->{'_single_sock'} = $self->{'servers'}[0];
     }
 
     return $self;
@@ -77,31 +79,41 @@ sub forget_dead_hosts {
     %host_dead = ();
 }
 
+sub _dead_sock {
+    my ($sock, $ret) = @_;
+    if ($sock =~ /^Sock_(.+?):(\d+)$/) {
+        my $now = time();
+        my ($ip, $port) = ($1, $2);
+        my $host = "$ip:$port";
+        $host_dead{$host} = $host_dead{$ip} = $now + 30 + int(rand(10));
+        delete $cache_sock{$host};
+    }
+    return $ret;  # 0 or undef, probably, depending on what caller wants
+}
+
 sub sock_to_host { # (host)
     my $host = shift;
+    return $cache_sock{$host} if $cache_sock{$host};
+
     my $now = time();
-    my ($ip, $port) = $host =~ /(.*):(.*)/;
+    my ($ip, $port) = $host =~ /(.*):(\d+)/;
     return undef if 
          $host_dead{$host} && $host_dead{$host} > $now || 
          $host_dead{$ip} && $host_dead{$ip} > $now;
+
     my $sock = "Sock_$host";
-    return $cache_sock{$host} if $cache_sock{$host} && getpeername($sock);
-    
-    my $proto = getprotobyname('tcp');
+    my $proto = $PROTO_TCP ||= getprotobyname('tcp');
+
     socket($sock, Socket::PF_INET(), Socket::SOCK_STREAM(), $proto);
     my $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
 
-    unless (connect($sock,$sin)) {
-        $host_dead{$host} = $host_dead{$ip} = $now + 60 + int(rand(10));
-        print STDERR "MemCachedClient: marking $host ($ip) as dead\n";
-        return undef;
-    }
+    return _dead_sock($sock, undef) unless (connect($sock,$sin));
     return $cache_sock{$host} = $sock;
 }
 
 sub get_sock { # (key)
     my ($self, $key) = @_;
-    return $self->{'_single_sock'} if $self->{'_single_sock'};
+    return sock_to_host($self->{'_single_sock'}) if $self->{'_single_sock'};
     return undef unless $self->{'active'};
     my $hv = ref $key ? int($key->[0]) : _hashfunc($key);
 
@@ -129,7 +141,7 @@ sub get_sock { # (key)
 }
 
 sub disconnect_all {
-    $_->close foreach (values %cache_sock);
+    close($_) foreach (values %cache_sock);
     %cache_sock = ();
 }
 
@@ -142,9 +154,9 @@ sub delete {
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
     my $cmd = "delete $key$time\r\n";
-    syswrite($sock, $cmd) or return 0;
+    syswrite($sock, $cmd) or return _dead_sock($sock, 0);
     my $res;
-    sysread($sock, $res, 255);
+    sysread($sock, $res, 255) or return _dead_sock($sock, 0);
     return 1 if $res eq "DELETED\r\n";
 }
 
@@ -194,9 +206,11 @@ sub _set {
     }
 
     $exptime = int($exptime || 0);
-    syswrite($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n") or return 0;
+    syswrite($sock, "$cmdname $key $flags $exptime $len\r\n$val\r\n") 
+        or return _dead_sock($sock, 0);
+
     my $line;
-    sysread($sock, $line, 255);
+    sysread($sock, $line, 255) or return _dead_sock($sock, 0);
     if ($line eq "STORED\r\n") {
         print STDERR "MemCache: $cmdname $key = $val (STORED)\n" if $self->{'debug'};
         return 1;
@@ -224,9 +238,9 @@ sub _incrdecr {
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
     my $cmd = "$cmdname $key $value\r\n";
-    syswrite($sock, $cmd) or return undef;
+    syswrite($sock, $cmd) or return _dead_sock($sock, undef);
     my $line;
-    sysread($sock, $line, 255);
+    sysread($sock, $line, 255) or return _dead_sock($sock, undef);
     return undef unless $line =~ /^(\d)/; 
     return $1;
 }
@@ -242,7 +256,7 @@ sub get {
     $key = $key->[1] if ref $key;
 
     my %val;
-    syswrite($sock, "get $key\r\n") or return undef;
+    syswrite($sock, "get $key\r\n") or return _dead_sock($sock, undef);
     _load_items($sock, \%val);
 
     if ($self->{'debug'}) {
@@ -274,12 +288,16 @@ sub get_multi {
     $self->{'stats'}->{"get_socks"} += @socks;
 
     # pass 1: send out requests
+    my @gather;
     foreach my $sock (@socks) {
-        my $cmd = "get @{$sock_keys{$sock}}\r\n";
-	syswrite($sock, $cmd);
+        if (syswrite($sock, "get @{$sock_keys{$sock}}\r\n")) {
+            push @gather, $sock;
+        } else {
+            _dead_sock($sock);
+        }
     }
     # pass 2: parse responses
-    foreach my $sock (@socks) {
+    foreach my $sock (@gather) {
         _load_items($sock, \%val);
     }
     if ($self->{'debug'}) {
@@ -314,10 +332,9 @@ sub _load_items {
   ITEM:
     while (1) {
 	if ($need_more) {
-	    my $read;
-	    my $readn = sysread($sock, $read, 50_000);  # arbitrary
-	    return 0 unless $readn;  # should finish normally (with END), not by empty read
-	    $buf .= $read;
+            # should finish normally (with END), not by empty read
+	    my $n = sysread($sock, $buf, 50_000, length($buf));
+            return _dead_sock($sock, 0) unless $n;
 	    $need_more = 0;  # set later if needed
 	}
 
