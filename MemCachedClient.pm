@@ -12,7 +12,7 @@ use Storable ();
 package MemCachedClient;
 
 use vars qw($VERSION);
-$VERSION = "1.0.1";
+$VERSION = "1.0.2";
 
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
@@ -312,6 +312,18 @@ hash value, if you want to avoid making this module calculate a hash
 value.  You may prefer, for example, to keep all of a given user's
 objects on the same memcache server, so you could use the user's
 unique id as the hash value.
+
+=item C<get_multi>
+
+my $hashref = $mem->get_multi(@keys);
+
+Retrieves multiple keys from the memcache doing just one query.
+Returns a hashref of key/value pairs that were available.
+
+This method is recommended over regular 'get' as it lowers the number
+of total packets flying around your network, reducing total latency,
+since your app doesn't have to wait for each round-trip of 'get'
+before sending the next one.
 
 =item C<set>
 
