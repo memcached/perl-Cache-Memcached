@@ -513,8 +513,19 @@ sub _load_multi {
 
         $ret->{$k} = Compress::Zlib::memGunzip($ret->{$k})
             if $HAVE_ZLIB && $flags{$sock} & F_COMPRESS;
-        $ret->{$k} = Storable::thaw($ret->{$k})
-            if $flags{$sock} & F_STORABLE;
+        if ($flags{$sock} & F_STORABLE) {
+            # wrapped in eval in case a perl 5.6 Storable tries to
+            # unthaw data from a perl 5.8 Storable.  (5.6 is stupid
+            # and dies if the version number changes at all.  in 5.8
+            # they made it only die if it unencounters a new feature)
+            eval {
+                $ret->{$k} = Storable::thaw($ret->{$k});
+            };
+            # so if there was a problem, just treat it as a cache miss.
+            if ($@) {
+                delete $ret->{$k};
+            }
+        }
     };
 
     my $read = sub {
