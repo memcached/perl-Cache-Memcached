@@ -11,12 +11,22 @@ use Storable ();
 
 package MemCachedClient;
 
-use vars qw($VERSION);
-$VERSION = "1.0.6";
+# flag definitions
+use constant F_STORABLE => 1;
+use constant F_COMPRESS => 2;
+
+# size savings required before saving compressed value
+use constant COMPRESS_SAVINGS => 0.20; # percent
+
+use vars qw($VERSION $HAVE_ZLIB);
+$VERSION = "1.0.7";
+
+BEGIN {
+    $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
+}
 
 my %host_dead;   # host -> unixtime marked dead until
 my %cache_sock;  # host -> socket
-
 
 sub new {
     my ($class, $args) = @_;
@@ -26,6 +36,9 @@ sub new {
     $self->set_servers($args->{'servers'});
     $self->{'debug'} = $args->{'debug'};
     $self->{'stats'} = {};
+    $self->{'compress_threshold'} = $args->{'compress_threshold'};
+    $self->{'compress_enable'}    = 1;
+
     return $self;
 }
 
@@ -41,6 +54,16 @@ sub set_servers {
 sub set_debug {
     my ($self, $dbg) = @_;
     $self->{'debug'} = $dbg;
+}
+
+sub set_compress_threshold {
+    my ($self, $thresh) = @_;
+    $self->{'compress_threshold'} = $thresh;
+}
+
+sub enable_compress {
+    my ($self, $enable) = @_;
+    $self->{'compress_enable'} = $enable;
 }
 
 sub forget_dead_hosts {
@@ -131,15 +154,34 @@ sub _set {
     return 0 unless $self->{'active'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
+
+    use bytes; # return bytes from length()
+
     $self->{'stats'}->{$cmdname}++;
     my $flags = 0;
     $key = ref $key eq "ARRAY" ? $key->[1] : $key;
-    my $raw_val = $val;
+    my $raw_val = $self->{'debug'} ? $val : undef;
     if (ref $val) {
         $val = Storable::freeze($val);
-        $flags |= 1;
+        $flags |= F_STORABLE;
     }
+
     my $len = length($val);
+
+    if ($HAVE_ZLIB && $self->{'compress_threshold'} && $self->{'compress_enable'} &&
+        $len >= $self->{'compress_threshold'}) {
+
+        my $c_val = Compress::Zlib::memGzip($val);
+        my $c_len = length($c_val);
+
+        # do we want to keep it?
+        if ($c_len < $len*(1 - COMPRESS_SAVINGS)) {
+            $val = $c_val;
+            $len = $c_len;
+            $flags |= F_COMPRESS;
+        }
+    }
+
     $exptime = int($exptime || 0);
     my $cmd = "$cmdname $key $flags $exptime $len\r\n$val\r\n";
     $sock->print($cmd);
@@ -226,6 +268,8 @@ sub _load_items {
     my $sock = shift;
     my $outref = shift;
 
+    use bytes; # return bytes from length()
+
     my %flags;
     my %val;
     my %len;   # key -> intended length
@@ -258,7 +302,8 @@ sub _load_items {
             foreach (keys %len) {
                 next unless exists $val{$_};
                 next unless length($val{$_}) == $len{$_};
-                $val{$_} = Storable::thaw($val{$_}) if $flags{$_} & 1;
+                $val{$_} = Compress::Zlib::memGunzip($val{$_}) if $HAVE_ZLIB && $flags{$_} & F_COMPRESS;
+                $val{$_} = Storable::thaw($val{$_}) if $flags{$_} & F_STORABLE;
                 $outref->{$_} = $val{$_};
             }
             return 1;
@@ -292,8 +337,11 @@ MemCachedClient - client library for memcached (memory cache daemon)
     'servers' => [ "10.0.0.15:11211", "10.0.0.15:11212", 
                    "10.0.0.17:11211", [ "10.0.0.17:11211", 3 ] ],
     'debug' => 0,
+    'compress_threshold' => 10_000,
   };
   $memc->set_servers($array_ref);
+  $memc->set_compress_threshold(10_000);
+  $memc->enable_compress(0);
 
   $memc->set("my_key", "Some value");
   $memc->set("object_key", { 'complex' => [ "object", 2, 4 ]});
@@ -328,6 +376,10 @@ unspecified is 1.)  It's recommended that weight values be kept as low
 as possible, as this module currently allocates memory for bucket
 distribution proportional to the total host weights.
 
+Use C<compress_threshold> to set a compression threshold, in bytes.
+Values larger than this threshold will be compressed by C<set> and
+decompressed by C<get>.
+
 The other useful key is C<debug>, which when set to true will produce
 diagnostics on STDERR.
 
@@ -342,6 +394,19 @@ diagnostics on STDERR.
 Sets the server list this module distributes key gets and sets between.
 The format is an arrayref of identical form as described in the C<new>
 constructor.
+
+=item C<set_debug>
+
+Sets the C<debug> flag.  See C<new> constructor for more information.
+
+=item C<set_compress_threshold>
+
+Sets the compression threshold. See C<new> constructor for more information.
+
+=item C<enable_compress>
+
+Temporarily enable or disable compression.  Has no effect if C<compress_threshold>
+isn't set, but has an overriding effect if it is.
 
 =item C<get>
 

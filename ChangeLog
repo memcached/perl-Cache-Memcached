@@ -1,3 +1,6 @@
+Version 1.0.7
+	-- compression support (Brad Whitaker)
+	
 Version 1.0.6
 	-- incr/decr client support
 	-- make delete optionally take second argument (server now supports
