@@ -157,7 +157,7 @@ sub _close_sock {
 
 sub _connect_sock { # sock, sin, timeout
     my ($sock, $sin, $timeout) = @_;
-    $timeout ||= 0.25;
+    $timeout = 0.25 if not defined $timeout;
 
     # make the socket non-blocking from now on,
     # except if someone wants 0 timeout, meaning
