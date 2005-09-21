@@ -1,15 +1,19 @@
+2005-09-20
+	* configurable connect delays and callback on connect failure (brad)
+	* release 1.15
+
 2005-08-09
         * _connect_sock never works in blocking mode because of a bug in setting
 	the default timeout. (Gaal)
 
 2004-07-27
 	* release 1.14
-	
+
 2004-07-27
 	* kill buggy, slow ord() _hashfunc, replace with crc32.
 	  this adds String::CRC32 as a dependency.  thanks to
 	  everybody's feedback on the mailing list.
-	
+
 2004-07-19
 	* don't use pos() because it doesn't seem to work in
 	  taint mode.  use $+[0] instead.  (Dave Evans <..@djce.org.uk>)

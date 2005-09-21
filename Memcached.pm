@@ -21,6 +21,7 @@ use fields qw{
     readonly select_timeout namespace namespace_len servers active buckets
     pref_ip
     bucketcount _single_sock _stime
+    connect_timeout cb_connect_fail
 };
 
 # flag definitions
@@ -31,7 +32,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.14";
+$VERSION = "1.15";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -64,7 +65,8 @@ sub new {
     $self->{'readonly'} = $args->{'readonly'};
 
     # TODO: undocumented
-    $self->{'select_timeout'} = $args->{'select_timeout'} || 1.0;
+    $self->{'connect_timeout'} = $args->{'connect_timeout'} || 0.25;
+    $self->{'select_timeout'}  = $args->{'select_timeout'}  || 1.0;
     $self->{namespace} = $args->{namespace} || '';
     $self->{namespace_len} = length $self->{namespace};
 
@@ -90,6 +92,16 @@ sub set_servers {
     }
 
     return $self;
+}
+
+sub set_cb_connect_fail {
+    my Cache::Memcached $self = shift;
+    $self->{'cb_connect_fail'} = shift;
+}
+
+sub set_connect_timeout {
+    my Cache::Memcached $self = shift;
+    $self->{'connect_timeout'} = shift;
 }
 
 sub set_debug {
@@ -214,9 +226,12 @@ sub sock_to_host { # (host)
         socket($sock, PF_INET, SOCK_STREAM, $proto);
         my $prefip = $self->{pref_ip}{$ip};
         $sin = Socket::sockaddr_in($port,Socket::inet_aton($prefip));
-        if (_connect_sock($sock,$sin,0.1)) {
+        if (_connect_sock($sock,$sin,$self->{connect_timeout})) {
             $connected = 1;
         } else {
+            if (my $cb = $self->{cb_connect_fail}) {
+                $cb->($prefip);
+            }
             close $sock;
         }
     }
@@ -225,7 +240,10 @@ sub sock_to_host { # (host)
     unless ($connected) {
         socket($sock, PF_INET, SOCK_STREAM, $proto);
         $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
-        unless (_connect_sock($sock,$sin)) {
+        unless (_connect_sock($sock,$sin,$self->{connect_timeout})) {
+            if (my $cb = $self->{cb_connect_fail}) {
+                $cb->($ip);
+            }
             return _dead_sock($sock, undef, 20 + int(rand(10)));
         }
     }
