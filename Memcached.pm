@@ -240,10 +240,10 @@ sub sock_to_host { # (host)
     unless ($connected) {
         socket($sock, PF_INET, SOCK_STREAM, $proto);
         $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
-        unless (_connect_sock($sock,$sin,$self->{connect_timeout})) {
-            if (my $cb = $self->{cb_connect_fail}) {
-                $cb->($ip);
-            }
+        my $timeout = $self ? $self->{connect_timeout} : 0.25;
+        unless (_connect_sock($sock,$sin,$timeout)) {
+            my $cb = $self ? $self->{cb_connect_fail} : undef;
+            $cb->($ip) if $cb;
             return _dead_sock($sock, undef, 20 + int(rand(10)));
         }
     }
