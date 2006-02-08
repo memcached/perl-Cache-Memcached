@@ -635,6 +635,18 @@ sub _load_multi {
         }
         $offset{$sock} += $res;
 
+
+        # Below is a hot path.  In preparation for rewriting it in Perl/C,
+        # here are some notes.
+        #
+        # The while(1) below uses:
+        #   %buf
+        #   %reading
+        #   $active_changed
+        #   %key, %flags, %state, %offset
+        #   $finalize (CV)
+        #   $self->{namespace_len}
+
       SEARCH:
         while(1) { # may have to search many times
             # do we have a complete END line?
