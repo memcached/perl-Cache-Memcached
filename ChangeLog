@@ -1,3 +1,9 @@
+2006-04-29
+	* fix stats method (people have only been asking since 2004  :-/)
+	* add tests
+	* move Memcached to lib/Cache directory to be more CPAN-friendly
+	* release 1.16
+
 2005-09-20
 	* configurable connect delays and callback on connect failure (brad)
 	* release 1.15
