@@ -1,9 +1,9 @@
 ChangeLog
-Memcached.pm
+lib/Cache/Memcached.pm
 Makefile.PL
 README
 MANIFEST
 TODO
 t/use.t
-
+t/all.t
 META.yml                                 Module meta-data (added by MakeMaker)
