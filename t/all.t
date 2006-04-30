@@ -1,3 +1,5 @@
+# -*-perl-*-
+
 use strict;
 use Test::More;
 use Cache::Memcached;
@@ -19,6 +21,7 @@ my $memd = Cache::Memcached->new({
 });
 
 ok($memd->set("key1", "val1"), "set succeeded");
+
 is($memd->get("key1"), "val1", "get worked");
 ok(! $memd->add("key1", "val-replace"), "add properly failed");
 ok($memd->add("key2", "val2"), "add worked on key2");
@@ -30,5 +33,6 @@ ok(! $memd->replace("key-noexist", "bogus"), "replace failed");
 my $stats = $memd->stats;
 ok($stats, "got stats");
 is(ref $stats, "HASH", "is a hashref");
+
 
 

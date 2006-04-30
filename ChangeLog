@@ -1,4 +1,9 @@
 2006-04-29
+	* flush_all command from Patrick Michael Kane <modus-memcache@pr.es.to>
+	* document namespaces
+	* release 1.17
+
+2006-04-29
 	* fix stats method (people have only been asking since 2004  :-/)
 	* add tests
 	* move Memcached to lib/Cache directory to be more CPAN-friendly

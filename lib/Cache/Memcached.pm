@@ -32,7 +32,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.16";
+$VERSION = "1.17";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -778,6 +778,22 @@ sub _hashfunc {
     return (crc32(shift) >> 16) & 0x7fff;
 }
 
+sub flush_all {
+    my Cache::Memcached $self = shift;
+
+    my $success = 1;
+
+    $self->init_buckets() unless $self->{'buckets'};
+    my @hosts = @{$self->{'buckets'}};
+    foreach my $host (@hosts) {
+        my $sock = $self->sock_to_host($host);
+        my @res = $self->run_command($sock, "flush_all\r\n");
+        $success = 0 unless (@res);
+    }
+
+    return $success;
+}
+
 # returns array of lines, or () on failure.
 sub run_command {
     my Cache::Memcached $self = shift;
@@ -976,6 +992,10 @@ Use C<readonly> to disable writes to backend memcached servers.  Only
 get and get_multi will work.  This is useful in bizarre debug and
 profiling cases only.
 
+Use C<namespace> to prefix all keys with the provided namespace value.
+That is, if you set namespace to "app1:" and later do a set of "foo"
+to "bar", memcached is actually seeing you set "app1:foo" to "bar".
+
 The other useful key is C<debug>, which when set to true will produce
 diagnostics on STDERR.
 
@@ -1142,12 +1162,22 @@ The stats returned by a 'stats items'.
 
 =item C<disconnect_all>
 
-$memd->disconnect_all();
+$memd->disconnect_all;
 
 Closes all cached sockets to all memcached servers.  You must do this
 if your program forks and the parent has used this module at all.
 Otherwise the children will try to use cached sockets and they'll fight
 (as children do) and garble the client/server protocol.
+
+=item C<flush_all>
+
+$memd->flush_all;
+
+Runs the memcached "flush_all" command on all configured hosts,
+emptying all their caches.  (or rather, invalidating all items
+in the caches in an O(1) operation...)  Running stats will still
+show the item existing, they're just be non-existent and lazily
+destroyed next time you try to detch any of them.
 
 =back
 
