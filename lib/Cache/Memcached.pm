@@ -107,7 +107,7 @@ sub set_connect_timeout {
 sub set_debug {
     my Cache::Memcached $self = shift;
     my ($dbg) = @_;
-    $self->{'debug'} = $dbg;
+    $self->{'debug'} = $dbg || 0;
 }
 
 sub set_readonly {
