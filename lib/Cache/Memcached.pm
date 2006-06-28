@@ -32,7 +32,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.17";
+$VERSION = "1.18";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -271,7 +271,7 @@ sub get_sock { # (key)
         my $host = $self->{'buckets'}->[$hv % $self->{'bucketcount'}];
         my $sock = $self->sock_to_host($host);
         return $sock if $sock;
-        return undef if $sock->{'no_rehash'};
+        return undef if $self->{'no_rehash'};
         $hv += _hashfunc($tries . $real_key);  # stupid, but works
     }
     return undef;

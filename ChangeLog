@@ -1,3 +1,8 @@
+2006-06-27
+	* patch from Maxim Dounin <mdounin@rambler-co.ru> to fix a typo
+	  which caused no_rehash flag to not work.
+	* release 1.18
+
 2006-04-29
 	* flush_all command from Patrick Michael Kane <modus-memcache@pr.es.to>
 	* document namespaces
