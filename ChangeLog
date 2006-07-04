@@ -1,3 +1,14 @@
+2006-07-03
+	* don't use dual scalar/glob sockets.  makes it all profilable
+	  again under SmallProf, DProf, and Devel::Profiler, all three
+	  of which used to barf on those weird sockets previously
+	* only init_buckets once, when servers are changed
+	* don't call sock_to_host and get_sock as much:  cache closer
+	  in get_multi
+	* more internal caching (buck2sock, etc)
+	* fast paths for namespaces/single sock/etc in a few more places
+	* general micro-speedups all over
+
 2006-06-27
 	* patch from Maxim Dounin <mdounin@rambler-co.ru> to fix a typo
 	  which caused no_rehash flag to not work.
