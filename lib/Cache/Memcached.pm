@@ -523,6 +523,7 @@ sub get_multi {
 
     if ($self->{'_single_sock'}) {
         $sock = $self->sock_to_host($self->{'_single_sock'});
+        return {} unless $sock;
         foreach my $key (@_) {
             my $kval = ref $key ? $key->[1] : $key;
             push @{$sock_keys{$sock}}, $kval;
