@@ -693,6 +693,8 @@ sub _load_multi {
 
       SEARCH:
         while(1) { # may have to search many times
+
+
             # do we have a complete END line?
             if ($buf{$sockstr} =~ /^END\r\n/) {
                 # okay, finished with this socket
@@ -724,6 +726,7 @@ sub _load_multi {
                 }
                 last SEARCH; # buffer is empty now
             }
+
 
             # if we're here probably means we only have a partial VALUE
             # or END line in the buffer. Could happen with multi-get,
@@ -783,6 +786,7 @@ sub _load_multi {
             $active_changed = 0;
         }
         # TODO: more intelligent cumulative timeout?
+        # TODO: select is interruptible w/ ptrace attach, signal, etc. should note that.
         $nfound = select($rout=$rin, $wout=$win, undef,
                          $self->{'select_timeout'});
         last unless $nfound;
