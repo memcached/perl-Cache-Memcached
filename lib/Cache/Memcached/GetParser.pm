@@ -40,6 +40,7 @@ sub parse_from_sock {
             if !defined($res) and $!==EWOULDBLOCK;
 
         if ($res == 0) { # catches 0=conn closed or undef=error
+            $self->[ON_ITEM] = undef;
             return -1;
         }
 
@@ -59,7 +60,10 @@ sub parse_from_sock {
                    2048, $self->[OFFSET]);
     return 0
         if !defined($res) and $!==EWOULDBLOCK;
-    return -1 if $res == 0;
+    if ($res == 0) {
+        $self->[ON_ITEM] = undef;
+        return -1;
+    }
 
     $self->[OFFSET] += $res;
 
