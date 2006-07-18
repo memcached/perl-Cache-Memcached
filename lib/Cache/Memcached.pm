@@ -16,6 +16,13 @@ use Time::HiRes ();
 use String::CRC32;
 use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 use Cache::Memcached::GetParser;
+my $HAVE_XS = eval "use Cache::Memcached::GetParserXS; 1;";
+$HAVE_XS = 0 if $ENV{NO_XS};
+
+my $parser_class = $HAVE_XS ? "Cache::Memcached::GetParserXS" : "Cache::Memcached::GetParser";
+if ($ENV{XS_DEBUG}) {
+    print "using parser: $parser_class\n";
+}
 
 use fields qw{
     debug no_rehash stats compress_threshold compress_enable stat_callback
@@ -635,7 +642,8 @@ sub _load_multi {
         } else {
             $buf{$_} = join(" ", 'get', @{$sock_keys->{$_}}, "\r\n");
         }
-        $parser{$_} = Cache::Memcached::GetParser->new($ret, $self->{namespace_len}, $finalize);
+
+        $parser{$_} = $parser_class->new($ret, $self->{namespace_len}, $finalize);
     }
 
     my $read = sub {

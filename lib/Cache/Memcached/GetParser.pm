@@ -26,12 +26,11 @@ sub current_key {
 # returns 1 on success, -1 on failure, and 0 if still working.
 sub parse_from_sock {
     my ($self, $sock) = @_;
-
     my $res;
-    my $ret = $self->[DEST];
 
     # where are we reading into?
     if ($self->[STATE]) { # reading value into $ret
+        my $ret = $self->[DEST];
         $res = sysread($sock, $ret->{$self->[KEY]},
                        $self->[STATE] - $self->[OFFSET],
                        $self->[OFFSET]);
@@ -57,7 +56,7 @@ sub parse_from_sock {
     # we're reading a single line.
     # first, read whatever's there, but be satisfied with 2048 bytes
     $res = sysread($sock, $self->[BUF],
-                   2048, $self->[OFFSET]);
+                   128*1024, $self->[OFFSET]);
     return 0
         if !defined($res) and $!==EWOULDBLOCK;
     if ($res == 0) {
@@ -67,10 +66,16 @@ sub parse_from_sock {
 
     $self->[OFFSET] += $res;
 
-    # Below is a hot path.  Should be written in C.
+    return $self->parse_buffer;
+}
+
+# returns 1 on success, -1 on failure, and 0 if still working.
+sub parse_buffer {
+    my ($self) = @_;
+    my $ret = $self->[DEST];
 
   SEARCH:
-    while(1) { # may have to search many times
+    while (1) { # may have to search many times
 
         # do we have a complete END line?
         if ($self->[BUF] =~ /^END\r\n/) {
@@ -114,6 +119,7 @@ sub parse_from_sock {
         $self->[OFFSET] = length($self->[BUF]);
         last SEARCH;
     }
+    return 0;
 }
 
 1;
