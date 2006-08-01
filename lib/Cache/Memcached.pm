@@ -437,6 +437,7 @@ sub _set {
     $key = ref $key ? $key->[1] : $key;
 
     if (ref $val) {
+        local $Carp::CarpLevel = 2;
         $val = Storable::nfreeze($val);
         $flags |= F_STORABLE;
     }
