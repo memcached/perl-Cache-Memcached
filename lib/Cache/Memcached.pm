@@ -10,7 +10,7 @@ package Cache::Memcached;
 use strict;
 no strict 'refs';
 use Storable ();
-use Socket qw( MSG_NOSIGNAL PF_INET IPPROTO_TCP SOCK_STREAM );
+use Socket qw( MSG_NOSIGNAL PF_INET PF_UNIX IPPROTO_TCP SOCK_STREAM );
 use IO::Handle ();
 use Time::HiRes ();
 use String::CRC32;
@@ -235,31 +235,43 @@ sub sock_to_host { # (host)
     my $sin;
     my $proto = $PROTO_TCP ||= getprotobyname('tcp');
 
-    # if a preferred IP is known, try that first.
-    if ($self && $self->{pref_ip}{$ip}) {
-        socket($sock, PF_INET, SOCK_STREAM, $proto);
-        my $prefip = $self->{pref_ip}{$ip};
-        $sin = Socket::sockaddr_in($port,Socket::inet_aton($prefip));
-        if (_connect_sock($sock,$sin,$self->{connect_timeout})) {
-            $connected = 1;
-        } else {
-            if (my $cb = $self->{cb_connect_fail}) {
-                $cb->($prefip);
+    if ( index($host, '/') != 0 )
+    {
+        # if a preferred IP is known, try that first.
+        if ($self && $self->{pref_ip}{$ip}) {
+            socket($sock, PF_INET, SOCK_STREAM, $proto);
+            my $prefip = $self->{pref_ip}{$ip};
+            $sin = Socket::sockaddr_in($port,Socket::inet_aton($prefip));
+            if (_connect_sock($sock,$sin,$self->{connect_timeout})) {
+                $connected = 1;
+            } else {
+                if (my $cb = $self->{cb_connect_fail}) {
+                    $cb->($prefip);
+                }
+                close $sock;
             }
-            close $sock;
         }
-    }
 
-    # normal path, or fallback path if preferred IP failed
-    unless ($connected) {
-        socket($sock, PF_INET, SOCK_STREAM, $proto);
-        $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
+        # normal path, or fallback path if preferred IP failed
+        unless ($connected) {
+            socket($sock, PF_INET, SOCK_STREAM, $proto);
+            $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
+            my $timeout = $self ? $self->{connect_timeout} : 0.25;
+            unless (_connect_sock($sock,$sin,$timeout)) {
+                my $cb = $self ? $self->{cb_connect_fail} : undef;
+                $cb->($ip) if $cb;
+                return _dead_sock($sock, undef, 20 + int(rand(10)));
+            }
+        }
+    } else { # it's a unix domain/local socket
+        socket($sock, PF_UNIX, SOCK_STREAM, 0);
+        $sin = Socket::sockaddr_un($host);
         my $timeout = $self ? $self->{connect_timeout} : 0.25;
         unless (_connect_sock($sock,$sin,$timeout)) {
             my $cb = $self ? $self->{cb_connect_fail} : undef;
-            $cb->($ip) if $cb;
+            $cb->($host) if $cb;
             return _dead_sock($sock, undef, 20 + int(rand(10)));
-        }
+        }    
     }
 
     # make the new socket not buffer writes.
@@ -895,7 +907,7 @@ Cache::Memcached - client library for memcached (memory cache daemon)
   use Cache::Memcached;
 
   $memd = new Cache::Memcached {
-    'servers' => [ "10.0.0.15:11211", "10.0.0.15:11212",
+    'servers' => [ "10.0.0.15:11211", "10.0.0.15:11212", "/var/sock/memcached",
                    "10.0.0.17:11211", [ "10.0.0.17:11211", 3 ] ],
     'debug' => 0,
     'compress_threshold' => 10_000,

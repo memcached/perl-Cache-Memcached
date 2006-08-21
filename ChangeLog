@@ -1,3 +1,5 @@
+	* support access via unix domain sockets. (Nathan Neulinger <nneul@umr.edu>)
+
 	* abstract out response parsing into own class, and add XS-module
 	  detection, so if you have the XS (C) version, things'll be faster.
 	  that part's not done yet.
