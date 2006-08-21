@@ -1,5 +1,6 @@
 ChangeLog
 lib/Cache/Memcached.pm
+lib/Cache/Memcached/GetParser.pm
 Makefile.PL
 README
 MANIFEST
