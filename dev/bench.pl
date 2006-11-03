@@ -31,7 +31,7 @@ for my $num (1..$keys) {
 }
 
 srand(1);
-my $to = 3000;
+my $to = shift || 3000;
 for (1..$to) {
     warn "$_ / $to\n" if $_ % 100 == 0;
     my @multi = map { "key$_" } map { int(rand($keys * 2)) + 1 } (1..40);
