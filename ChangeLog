@@ -1,3 +1,6 @@
+        * fix "Warning produced when flush_all called" from CDENT
+	  http://rt.cpan.org/Public/Bug/Display.html?id=22181
+
 	* support access via unix domain sockets. (Nathan Neulinger <nneul@umr.edu>)
 
 	* abstract out response parsing into own class, and add XS-module

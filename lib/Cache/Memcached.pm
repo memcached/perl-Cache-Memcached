@@ -271,7 +271,7 @@ sub sock_to_host { # (host)
             my $cb = $self ? $self->{cb_connect_fail} : undef;
             $cb->($host) if $cb;
             return _dead_sock($sock, undef, 20 + int(rand(10)));
-        }    
+        }
     }
 
     # make the new socket not buffer writes.
@@ -776,8 +776,8 @@ sub run_command {
     my $line = $cmd;
     while (my $res = _write_and_read($self, $sock, $line)) {
         undef $line;
-    $ret .= $res;
-        last if $ret =~ /(?:END|ERROR)\r\n$/;
+        $ret .= $res;
+        last if $ret =~ /(?:OK|END|ERROR)\r\n$/;
     }
     chop $ret; chop $ret;
     return map { "$_\r\n" } split(/\r\n/, $ret);
