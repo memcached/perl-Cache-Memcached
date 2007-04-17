@@ -53,8 +53,8 @@ if (1) {
         my $s1 = $set->target_of_bucket($rand);
         my $s2 = $set2->target_of_bucket($rand);
         $tran{"$s1-$s2"}++;
-        $tran{"was-$s1"}++;
-        $tran{"now-$s2"}++;
+        $tran{"$s1-"}++;
+        $tran{"-$s2"}++;
     }
 
     print Dumper(\%tran);
