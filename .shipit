@@ -1,0 +1,4 @@
+# auto-generated shipit config file.
+steps = FindVersion, ChangeVersion, CheckChangeLog, DistTest, Commit, Tag, MakeDist, UploadCPAN
+
+svn.tagpattern = Cache-Memcached-%v
