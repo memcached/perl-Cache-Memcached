@@ -8,6 +8,8 @@
 package Cache::Memcached;
 
 use strict;
+use warnings;
+
 no strict 'refs';
 use Storable ();
 use Socket qw( MSG_NOSIGNAL PF_INET PF_UNIX IPPROTO_TCP SOCK_STREAM );
@@ -40,7 +42,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.20";
+$VERSION = "1.21";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -622,25 +624,31 @@ sub _load_multi {
         _dead_sock($sock);
     };
 
+    # $finalize->($key, $flags)
+    # $finalize->({ $key => $flags, $key => $flags });
     my $finalize = sub {
-        my ($k, $flags) = @_;
+        my $map = $_[0];
+        $map = {@_} unless ref $map;
 
-        # remove trailing \r\n
-        chop $ret->{$k}; chop $ret->{$k};
+        while (my ($k, $flags) = each %$map) {
 
-        $ret->{$k} = Compress::Zlib::memGunzip($ret->{$k})
-            if $HAVE_ZLIB && $flags & F_COMPRESS;
-        if ($flags & F_STORABLE) {
-            # wrapped in eval in case a perl 5.6 Storable tries to
-            # unthaw data from a perl 5.8 Storable.  (5.6 is stupid
-            # and dies if the version number changes at all.  in 5.8
-            # they made it only die if it unencounters a new feature)
-            eval {
-                $ret->{$k} = Storable::thaw($ret->{$k});
-            };
-            # so if there was a problem, just treat it as a cache miss.
-            if ($@) {
-                delete $ret->{$k};
+            # remove trailing \r\n
+            chop $ret->{$k}; chop $ret->{$k};
+
+            $ret->{$k} = Compress::Zlib::memGunzip($ret->{$k})
+                if $HAVE_ZLIB && $flags & F_COMPRESS;
+            if ($flags & F_STORABLE) {
+                # wrapped in eval in case a perl 5.6 Storable tries to
+                # unthaw data from a perl 5.8 Storable.  (5.6 is stupid
+                # and dies if the version number changes at all.  in 5.8
+                # they made it only die if it unencounters a new feature)
+                eval {
+                    $ret->{$k} = Storable::thaw($ret->{$k});
+                };
+                # so if there was a problem, just treat it as a cache miss.
+                if ($@) {
+                    delete $ret->{$k};
+                }
             }
         }
     };

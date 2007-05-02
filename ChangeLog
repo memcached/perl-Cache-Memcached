@@ -1,3 +1,9 @@
+2007-05-02: version 1.21
+
+	* new faster optional interface for GetParser subclasses.  doing
+	  this release so upcoming Cache::Memcached::GetParserXS can
+	  depend on this.  otherwise this release isn't interesting.
+
 2007-04-16: version 1.20
 
         * fix "Warning produced when flush_all called" from CDENT
