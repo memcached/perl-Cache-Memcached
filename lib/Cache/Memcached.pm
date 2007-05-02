@@ -32,6 +32,7 @@ use fields qw{
     pref_ip
     bucketcount _single_sock _stime
     connect_timeout cb_connect_fail
+    parser_class
 };
 
 # flag definitions
@@ -74,6 +75,7 @@ sub new {
     $self->{'compress_enable'}    = 1;
     $self->{'stat_callback'} = $args->{'stat_callback'} || undef;
     $self->{'readonly'} = $args->{'readonly'};
+    $self->{'parser_class'} = $args->{'parser_class'} || $parser_class;
 
     # TODO: undocumented
     $self->{'connect_timeout'} = $args->{'connect_timeout'} || 0.25;
@@ -664,7 +666,7 @@ sub _load_multi {
             $buf{$_} = join(" ", 'get', @{$sock_keys->{$_}}, "\r\n");
         }
 
-        $parser{$_} = $parser_class->new($ret, $self->{namespace_len}, $finalize);
+        $parser{$_} = $self->{parser_class}->new($ret, $self->{namespace_len}, $finalize);
     }
 
     my $read = sub {

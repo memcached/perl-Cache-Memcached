@@ -1,3 +1,7 @@
+	* let parser_class be configured as a constructor option,
+	  defaulting to XS if available, else regular.  (unless
+	  $ENV{NO_XS} is set, in which case the default is regular)
+
 2007-05-02: version 1.21
 
 	* new faster optional interface for GetParser subclasses.  doing
