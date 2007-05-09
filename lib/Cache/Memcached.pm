@@ -18,14 +18,6 @@ use Time::HiRes ();
 use String::CRC32;
 use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 use Cache::Memcached::GetParser;
-my $HAVE_XS = eval "use Cache::Memcached::GetParserXS; 1;";
-$HAVE_XS = 0 if $ENV{NO_XS};
-
-my $parser_class = $HAVE_XS ? "Cache::Memcached::GetParserXS" : "Cache::Memcached::GetParser";
-if ($ENV{XS_DEBUG}) {
-    print "using parser: $parser_class\n";
-}
-
 use fields qw{
     debug no_rehash stats compress_threshold compress_enable stat_callback
     readonly select_timeout namespace namespace_len servers active buckets
@@ -47,6 +39,14 @@ $VERSION = "1.21";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
+}
+
+my $HAVE_XS = eval "use Cache::Memcached::GetParserXS; 1;";
+$HAVE_XS = 0 if $ENV{NO_XS};
+
+my $parser_class = $HAVE_XS ? "Cache::Memcached::GetParserXS" : "Cache::Memcached::GetParser";
+if ($ENV{XS_DEBUG}) {
+    print "using parser: $parser_class\n";
 }
 
 $FLAG_NOSIGNAL = 0;
