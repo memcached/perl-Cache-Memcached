@@ -24,7 +24,7 @@ use fields qw{
     pref_ip
     bucketcount _single_sock _stime
     connect_timeout cb_connect_fail
-    parser_class
+    parser_class hooks
 };
 
 # flag definitions
@@ -82,6 +82,7 @@ sub new {
     $self->{'select_timeout'}  = $args->{'select_timeout'}  || 1.0;
     $self->{namespace} = $args->{namespace} || '';
     $self->{namespace_len} = length $self->{namespace};
+    $self->{hooks} = {};
 
     return $self;
 }
@@ -411,6 +412,8 @@ sub delete {
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
 
+    $self->run_hook('delete_start', $self);
+
     $self->{'stats'}->{"delete"}++;
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
@@ -421,6 +424,8 @@ sub delete {
         my $etime = Time::HiRes::time();
         $self->{'stat_callback'}->($stime, $etime, $sock, 'delete');
     }
+
+    $self->run_hook('delete_end', $self);
 
     return $res eq "DELETED\r\n";
 }
@@ -445,6 +450,8 @@ sub _set {
     my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
+
+    $self->run_hook('set_start', $self);
 
     use bytes; # return bytes from length()
 
@@ -490,6 +497,8 @@ sub _set {
         my $etime = Time::HiRes::time();
         $self->{'stat_callback'}->($stime, $etime, $sock, $cmdname);
     }
+
+    $self->run_hook('set_end', $self);
 
     return $res eq "STORED\r\n";
 }
@@ -542,13 +551,18 @@ sub get_multi {
     $self->{'_stime'} = Time::HiRes::time() if $self->{'stat_callback'};
     $self->{'stats'}->{"get_multi"}++;
 
+    $self->run_hook('get_start', $self);
+
     my %val;        # what we'll be returning a reference to (realkey -> value)
     my %sock_keys;  # sockref_as_scalar -> [ realkeys ]
     my $sock;
 
     if ($self->{'_single_sock'}) {
         $sock = $self->sock_to_host($self->{'_single_sock'});
-        return {} unless $sock;
+        unless ($sock) {
+            $self->run_hook('get_start', $self);
+            return {};
+        }
         foreach my $key (@_) {
             my $kval = ref $key ? $key->[1] : $key;
             push @{$sock_keys{$sock}}, $kval;
@@ -581,6 +595,8 @@ sub get_multi {
     local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
 
     _load_multi($self, \%sock_keys, \%val);
+
+    $self->run_hook('get_end', $self);
 
     if ($self->{'debug'}) {
         while (my ($k, $v) = each %val) {
@@ -903,7 +919,28 @@ sub stats_reset {
     return 1;
 }
 
+sub run_hook {
+    my Cache::Memcached $self = shift;
+    my $hookname = shift || return;
 
+    my $hook = $self->{hooks}->{$hookname};
+    return unless $hook;
+
+    eval { $hook->(@_) };
+
+    warn "Cache::Memcached hook '$hookname' threw error: $@\n" if $@;
+}
+
+sub add_hook {
+    my Cache::Memcached $self = shift;
+    my $hookname = shift || return;
+
+    if (@_) {
+        $self->{hooks}->{$hookname} = shift;
+    } else {
+        delete $self->{hooks}->{$hookname};
+    }
+}
 
 1;
 __END__

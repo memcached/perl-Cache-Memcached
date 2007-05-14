@@ -1,3 +1,6 @@
+	* Add hook support, and define a few hooks for use in gathering
+	  statistics.
+
 	* let parser_class be configured as a constructor option,
 	  defaulting to XS if available, else regular.  (unless
 	  $ENV{NO_XS} is set, in which case the default is regular)
