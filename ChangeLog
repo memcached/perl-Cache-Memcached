@@ -1,5 +1,8 @@
-	* Add hook support, and define a few hooks for use in gathering
-	  statistics.
+2007-06-18: version 1.22
+
+	* lost connection handling broken due to wrong %sock_map indexing
+	  http://rt.cpan.org/Public/Bug/Display.html?id=27181
+	  fix from RHESA
 
 	* let parser_class be configured as a constructor option,
 	  defaulting to XS if available, else regular.  (unless
