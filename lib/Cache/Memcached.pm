@@ -402,7 +402,6 @@ sub _write_and_read {
     return $ret;
 }
 
-
 sub delete {
     my Cache::Memcached $self = shift;
     my ($key, $time) = @_;
@@ -424,6 +423,7 @@ sub delete {
 
     return $res eq "DELETED\r\n";
 }
+*remove = \&delete;
 
 sub add {
     _set("add", @_);
@@ -1072,6 +1072,9 @@ Deletes a key.  You may optionally provide an integer time value (in seconds) to
 tell the memcached server to block new writes to this key for that many seconds.
 (Sometimes useful as a hacky means to prevent races.)  Returns true if key
 was found and deleted, and false otherwise.
+
+You may also use the alternate method name B<remove>, so
+Cache::Memcached looks like the L<Cache::Cache> API.
 
 =item C<incr>
 
