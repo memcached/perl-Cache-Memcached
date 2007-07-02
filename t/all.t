@@ -9,7 +9,7 @@ my $testaddr = "127.0.0.1:11211";
 my $msock = IO::Socket::INET->new(PeerAddr => $testaddr,
                                   Timeout  => 3);
 if ($msock) {
-    plan tests => 9;
+    plan tests => 10;
 } else {
     plan skip_all => "No memcached instance running at $testaddr\n";
     exit 0;
@@ -19,6 +19,7 @@ my $memd = Cache::Memcached->new({
     servers   => [ $testaddr ],
     namespace => "Cache::Memcached::t/$$/" . (time() % 100) . "/",
 });
+
 
 ok($memd->set("key1", "val1"), "set succeeded");
 
@@ -35,4 +36,9 @@ ok($stats, "got stats");
 is(ref $stats, "HASH", "is a hashref");
 
 
-
+# also make one without a hashref
+my $mem2 = Cache::Memcached->new(
+                                 servers   => [ ],
+                                 debug     => 1,
+                                 );
+ok($mem2->{debug}, "debug is set on alt constructed instance");

@@ -1,3 +1,6 @@
+	* arguments to 'new' constructor can be %hash or $hashref now
+	  (previously was only $hashref)
+
 	* work around a Perl segfault (Matthieu PATOU <mp@oxado.com>)
 	  see http://lists.danga.com/pipermail/memcached/2007-June/004511.html
 

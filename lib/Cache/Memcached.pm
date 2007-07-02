@@ -64,7 +64,7 @@ sub new {
     my Cache::Memcached $self = shift;
     $self = fields::new( $self ) unless ref $self;
 
-    my ($args) = @_;
+    my $args = (@_ == 1) ? shift : { @_ };  # hashref-ify args
 
     $self->set_servers($args->{'servers'});
     $self->{'debug'} = $args->{'debug'} || 0;
