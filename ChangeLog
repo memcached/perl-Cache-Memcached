@@ -1,3 +1,6 @@
+	* work around a Perl segfault (Matthieu PATOU <mp@oxado.com>)
+	  see http://lists.danga.com/pipermail/memcached/2007-June/004511.html
+
 2007-06-19: version 1.23
 
 	* add 'remove' as an alias for 'delete' (Dave Cardwell <dave@davecardwell.co.uk>)
