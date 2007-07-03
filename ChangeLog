@@ -1,3 +1,6 @@
+	* update the stats method, including tests for it
+	  (Ronald J Kimball <rkimball+memcached@pangeamedia.com>)
+
 	* arguments to 'new' constructor can be %hash or $hashref now
 	  (previously was only $hashref)
 

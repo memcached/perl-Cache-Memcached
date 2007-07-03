@@ -830,9 +830,15 @@ sub stats {
         $stats_hr->{'self'} = \%{ $self->{'stats'} };
     }
 
+    my %misc_keys = map { $_ => 1 }
+      qw/ bytes bytes_read bytes_written
+          cmd_get cmd_set connection_structures curr_items
+          get_hits get_misses
+          total_connections total_items
+        /;
+
     # Now handle the other types, passing each type to each host server.
     my @hosts = @{$self->{'buckets'}};
-    my %malloc_keys = ( );
   HOST: foreach my $host (@hosts) {
         my $sock = $self->sock_to_host($host);
       TYPE: foreach my $typename (grep !/^self$/, @$types) {
@@ -862,7 +868,10 @@ sub stats {
                     if ($key) {
                         $stats_hr->{'hosts'}{$host}{$typename}{$key} = $value;
                     }
-                    $malloc_keys{$key} = 1 if $key && $typename eq 'malloc';
+                    $stats_hr->{'total'}{$key} += $value
+                        if $typename eq 'misc' && $key && $misc_keys{$key};
+                    $stats_hr->{'total'}{"malloc_$key"} += $value
+                        if $typename eq 'malloc' && $key;
                 }
             } else {
                 # This stat is not key-value so just pull it
@@ -871,29 +880,6 @@ sub stats {
                 $stats_hr->{'hosts'}{$host}{$typename} ||= "";
                 $stats_hr->{'hosts'}{$host}{$typename} .= "$lines";
             }
-        }
-    }
-
-    # Now get the sum total of applicable values.  First the misc values.
-    foreach my $stat (qw(
-        bytes bytes_read bytes_written
-        cmd_get cmd_set connection_structures curr_items
-        get_hits get_misses
-        total_connections total_items
-        )) {
-        $stats_hr->{'total'}{$stat} = 0;
-        foreach my $host (@hosts) {
-            $stats_hr->{'total'}{$stat} +=
-                $stats_hr->{'hosts'}{$host}{'misc'}{$stat};
-        }
-    }
-
-    # Then all the malloc values, if any.
-    foreach my $malloc_stat (keys %malloc_keys) {
-        $stats_hr->{'total'}{"malloc_$malloc_stat"} = 0;
-        foreach my $host (@hosts) {
-            $stats_hr->{'total'}{"malloc_$malloc_stat"} +=
-                $stats_hr->{'hosts'}{$host}{'malloc'}{$malloc_stat};
         }
     }
 
