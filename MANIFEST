@@ -6,6 +6,7 @@ README
 MANIFEST
 MANIFEST.SKIP
 TODO
-t/use.t
-t/all.t
+t/01_use.t
+t/02_keys.t
+t/03_stats.t
 META.yml                                 Module meta-data (added by MakeMaker)
