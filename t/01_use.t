@@ -1,7 +1,8 @@
 #!/usr/bin/env perl -w
-use strict;
-use Test;
-BEGIN { plan tests => 1 }
 
-use Cache::Memcached; ok(1);
-exit;
+use strict;
+use Test::More;
+
+plan tests => 1;
+
+use_ok('Cache::Memcached');
