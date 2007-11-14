@@ -421,7 +421,7 @@ sub delete {
         $self->{'stat_callback'}->($stime, $etime, $sock, 'delete');
     }
 
-    return $res eq "DELETED\r\n";
+    return defined $res && $res eq "DELETED\r\n";
 }
 *remove = \&delete;
 
@@ -491,7 +491,7 @@ sub _set {
         $self->{'stat_callback'}->($stime, $etime, $sock, $cmdname);
     }
 
-    return $res eq "STORED\r\n";
+    return defined $res && $res eq "STORED\r\n";
 }
 
 sub incr {
@@ -522,7 +522,7 @@ sub _incrdecr {
         $self->{'stat_callback'}->($stime, $etime, $sock, $cmdname);
     }
 
-    return undef unless $res =~ /^(\d+)/;
+    return undef unless defined $res && $res =~ /^(\d+)/;
     return $1;
 }
 
@@ -894,7 +894,7 @@ sub stats_reset {
   HOST: foreach my $host (@{$self->{'buckets'}}) {
         my $sock = $self->sock_to_host($host);
         my $ok = _write_and_read($self, $sock, "stats reset");
-        unless ($ok eq "RESET\r\n") {
+        unless (defined $ok && $ok eq "RESET\r\n") {
             _dead_sock($sock);
         }
     }
