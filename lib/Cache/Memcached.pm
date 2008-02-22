@@ -335,7 +335,7 @@ sub disconnect_all {
 # which gets passed a scalarref of buffer read thus far.
 sub _write_and_read {
     my Cache::Memcached $self = shift;
-    my ($sock, $line, $check_complete) = @_;
+    my ($sock, $line, $check_complete, $noreply) = @_;
     my $res;
     my ($ret, $offset) = (undef, 0);
 
@@ -375,7 +375,7 @@ sub _write_and_read {
                 return undef;
             }
             if ($res == length($line)) { # all sent
-                $state = 1;
+                $state = $noreply ? 2 : 1;
             } else { # we only succeeded in sending some of it
                 substr($line, 0, $res, ''); # delete the part we sent
             }
@@ -410,11 +410,15 @@ sub delete {
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
 
+    my @params;
+    my $noreply = not defined wantarray;
+    push @params, "noreply" if $noreply;
+
     $self->{'stats'}->{"delete"}++;
     $key = ref $key ? $key->[1] : $key;
     $time = $time ? " $time" : "";
-    my $cmd = "delete $self->{namespace}$key$time\r\n";
-    my $res = _write_and_read($self, $sock, $cmd);
+    my $cmd = "delete $self->{namespace}$key$time @params\r\n";
+    my $res = _write_and_read($self, $sock, $cmd, undef, $noreply);
 
     if ($self->{'stat_callback'}) {
         my $etime = Time::HiRes::time();
@@ -445,6 +449,10 @@ sub _set {
     my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
     return 0 unless $sock;
+
+    my @params;
+    my $noreply = not defined wantarray;
+    push @params, "noreply" if $noreply;
 
     use bytes; # return bytes from length()
 
@@ -477,9 +485,9 @@ sub _set {
     $exptime = int($exptime || 0);
 
     local $SIG{'PIPE'} = "IGNORE" unless $FLAG_NOSIGNAL;
-    my $line = "$cmdname $self->{namespace}$key $flags $exptime $len\r\n$val\r\n";
+    my $line = "$cmdname $self->{namespace}$key $flags $exptime $len @params\r\n$val\r\n";
 
-    my $res = _write_and_read($self, $sock, $line);
+    my $res = _write_and_read($self, $sock, $line, undef, $noreply);
 
     if ($self->{'debug'} && $line) {
         chop $line; chop $line;
@@ -514,8 +522,12 @@ sub _incrdecr {
     $self->{'stats'}->{$cmdname}++;
     $value = 1 unless defined $value;
 
-    my $line = "$cmdname $self->{namespace}$key $value\r\n";
-    my $res = _write_and_read($self, $sock, $line);
+    my @params;
+    my $noreply = not defined wantarray;
+    push @params, "noreply" if $noreply;
+
+    my $line = "$cmdname $self->{namespace}$key $value @params\r\n";
+    my $res = _write_and_read($self, $sock, $line, undef, $noreply);
 
     if ($self->{'stat_callback'}) {
         my $etime = Time::HiRes::time();
@@ -776,20 +788,39 @@ sub _hashfunc {
 
 sub flush_all {
     my Cache::Memcached $self = shift;
+    my ($time) = @_;
+
+    $time = 0 unless defined $time;
 
     my $success = 1;
 
+    my @params;
+    my $noreply = not defined wantarray;
+    push @params, "noreply" if $noreply;
+
     my @hosts = @{$self->{'buckets'}};
+
+    # Distribute the delay among the servers.  For instance, if $time
+    # is 30 seconds, and we have 3 servers, they will get 30, 15, 0.
+    my $delay_step = 0;
+    if (@hosts > 1) {
+        $delay_step = $time / (@hosts - 1);
+    }
+
     foreach my $host (@hosts) {
+        my $delay = int($time);
+        $time -= $delay_step;
+        my $line = "flush_all $delay @params\r\n";
         my $sock = $self->sock_to_host($host);
-        my @res = $self->run_command($sock, "flush_all\r\n");
-        $success = 0 unless (@res);
+        my $res = _write_and_read($self, $sock, $line, undef, $noreply);
+        $success = 0 unless ($noreply or $res eq "OK\r\n");
     }
 
     return $success;
 }
 
 # returns array of lines, or () on failure.
+# FIXME: current implementation is broken.
 sub run_command {
     my Cache::Memcached $self = shift;
     my ($sock, $cmd) = @_;
@@ -797,8 +828,10 @@ sub run_command {
     my $ret;
     my $line = $cmd;
     while (my $res = _write_and_read($self, $sock, $line)) {
+        # FIXME: _write_and_read() won't handle undefined $line.
         undef $line;
         $ret .= $res;
+        # FIXME: end condition is not correct.
         last if $ret =~ /(?:OK|END|ERROR)\r\n$/;
     }
     chop $ret; chop $ret;
