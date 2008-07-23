@@ -1,3 +1,6 @@
+	* flush_all now only returns success if there is a proper reply from all
+	  servers - Yann Kerherve <yann@sixapart.com>
+	
 	* 'noreply' support from Tomash Brechko <tomash.brechko@gmail.com>
 
 	* various test updates from Ronald J Kimball <rkimball@pangeamedia.com>

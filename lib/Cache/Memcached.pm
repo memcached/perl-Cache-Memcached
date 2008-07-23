@@ -783,7 +783,7 @@ sub flush_all {
     foreach my $host (@hosts) {
         my $sock = $self->sock_to_host($host);
         my @res = $self->run_command($sock, "flush_all\r\n");
-        $success = 0 unless (@res);
+        $success = 0 unless (scalar @res == 1 && (($res[0] || "") eq "OK\r\n"));
     }
 
     return $success;
