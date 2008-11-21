@@ -441,6 +441,7 @@ sub _set {
     my $cmdname = shift;
     my Cache::Memcached $self = shift;
     my ($key, $val, $exptime) = @_;
+    $val = '' unless (defined $val);
     return 0 if ! $self->{'active'} || $self->{'readonly'};
     my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
