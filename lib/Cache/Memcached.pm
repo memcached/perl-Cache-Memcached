@@ -18,6 +18,7 @@ use Time::HiRes ();
 use String::CRC32;
 use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 use Cache::Memcached::GetParser;
+use Carp qw(carp croak);
 use fields qw{
     debug no_rehash stats compress_threshold compress_enable stat_callback
     readonly select_timeout namespace namespace_len servers active buckets
@@ -441,7 +442,7 @@ sub _set {
     my $cmdname = shift;
     my Cache::Memcached $self = shift;
     my ($key, $val, $exptime) = @_;
-    $val = '' unless (defined $val);
+    carp "value for memkey:$key is not defined" unless (defined $val);
     return 0 if ! $self->{'active'} || $self->{'readonly'};
     my $stime = Time::HiRes::time() if $self->{'stat_callback'};
     my $sock = $self->get_sock($key);
