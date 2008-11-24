@@ -1,3 +1,6 @@
+	* Warn when trying to put undef values into memcache.
+	  (Henry Lyne <hlyne@livejournalinc.com>)
+	
 	* flush_all now only returns success if there is a proper reply from all
 	  servers - Yann Kerherve <yann@sixapart.com>
 	
