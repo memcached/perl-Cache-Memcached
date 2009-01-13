@@ -1,3 +1,7 @@
+	* Reconnects to a dead connection shouldn't happen every time when the
+	  connection has never succeded. Apply the dead timeout to sockets that
+	  never even came up. Add a test.
+
 	* Warn when trying to put undef values into memcache.
 	  (Henry Lyne <hlyne@livejournalinc.com>)
 	

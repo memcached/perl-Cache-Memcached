@@ -244,6 +244,7 @@ sub sock_to_host { # (host)
         # if a preferred IP is known, try that first.
         if ($self && $self->{pref_ip}{$ip}) {
             socket($sock, PF_INET, SOCK_STREAM, $proto);
+            $sock_map{$sock} = $host;
             my $prefip = $self->{pref_ip}{$ip};
             $sin = Socket::sockaddr_in($port,Socket::inet_aton($prefip));
             if (_connect_sock($sock,$sin,$self->{connect_timeout})) {
@@ -259,6 +260,7 @@ sub sock_to_host { # (host)
         # normal path, or fallback path if preferred IP failed
         unless ($connected) {
             socket($sock, PF_INET, SOCK_STREAM, $proto);
+            $sock_map{$sock} = $host;
             $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
             my $timeout = $self ? $self->{connect_timeout} : 0.25;
             unless (_connect_sock($sock,$sin,$timeout)) {
@@ -269,6 +271,7 @@ sub sock_to_host { # (host)
         }
     } else { # it's a unix domain/local socket
         socket($sock, PF_UNIX, SOCK_STREAM, 0);
+        $sock_map{$sock} = $host;
         $sin = Socket::sockaddr_un($host);
         my $timeout = $self ? $self->{connect_timeout} : 0.25;
         unless (_connect_sock($sock,$sin,$timeout)) {
@@ -283,7 +286,6 @@ sub sock_to_host { # (host)
     $| = 1;
     select($old);
 
-    $sock_map{$sock} = $host;
     $cache_sock{$host} = $sock;
 
     return $sock;
