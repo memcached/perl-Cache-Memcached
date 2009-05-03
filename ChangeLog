@@ -1,3 +1,8 @@
+2009-05-02: version 1.25
+
+	* Clear @buck2sock when calling disconnect_all.  (Dennis Stosberg,
+	  [rt.cpan.org #45560]
+	
 	* Reconnects to a dead connection shouldn't happen every time when the
 	  connection has never succeded. Apply the dead timeout to sockets that
 	  never even came up. Add a test.

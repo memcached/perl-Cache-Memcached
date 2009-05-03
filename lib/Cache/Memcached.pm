@@ -35,7 +35,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.24";
+$VERSION = "1.25";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -330,6 +330,7 @@ sub disconnect_all {
         close $sock;
     }
     %cache_sock = ();
+    @buck2sock = ();
 }
 
 # writes a line, then reads result.  by default stops reading after a
