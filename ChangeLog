@@ -1,3 +1,8 @@
+2009-05-04: version 1.26
+
+	* don't include "stats sizes" by default in the stats method,
+	  as that can hang big servers for a few seconds (Brad Fitzpatrick)
+	
 2009-05-02: version 1.25
 
 	* Clear @buck2sock when calling disconnect_all.  (Dennis Stosberg,

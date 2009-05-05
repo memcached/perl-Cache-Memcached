@@ -35,7 +35,7 @@ use constant F_COMPRESS => 2;
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
 use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.25";
+$VERSION = "1.26";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
@@ -819,8 +819,10 @@ sub stats {
             # I don't much care what the default is, it should just
             # be something reasonable.  Obviously "reset" should not
             # be on the list :) but other types that might go in here
-            # include maps, cachedump, slabs, or items.
-            $types = [ qw( misc malloc sizes self ) ];
+            # include maps, cachedump, slabs, or items.  Note that
+            # this does NOT include 'sizes' anymore, as that can freeze
+            # bug servers for a couple seconds.
+            $types = [ qw( misc malloc self ) ];
         } else {
             $types = [ $types ];
         }
