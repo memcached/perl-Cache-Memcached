@@ -9,7 +9,7 @@ my $testaddr = "127.0.0.1:11311";
 my $sock = IO::Socket::INET->new(
     LocalAddr => $testaddr,
     Proto     => 'tcp',
-    ReusAddr  => 1,
+    ReuseAddr => 1,
 );
 
 my @res = (
