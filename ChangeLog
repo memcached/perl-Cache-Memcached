@@ -1,3 +1,5 @@
+	* Fix occasional failure in the 100_flush_bug.t test (Ask Bjørn Hansen)
+
 2009-05-04: version 1.26
 
 	* don't include "stats sizes" by default in the stats method,

@@ -5,7 +5,8 @@ use Test::More;
 use Cache::Memcached;
 use IO::Socket::INET;
 
-my $testaddr = "127.0.0.1:11311";
+my $port = 11311;
+my $testaddr = "127.0.0.1:$port";
 my $sock = IO::Socket::INET->new(
     LocalAddr => $testaddr,
     Proto     => 'tcp',
@@ -30,15 +31,15 @@ if ($sock) {
 }
 close $sock;
 
-
 my $pid = fork;
 die "Cannot fork because: '$!'" unless defined $pid;
 unless ($pid) {
+    
     my $sock = IO::Socket::INET->new(
-        LocalAddr => $testaddr,
-        Proto     => 'tcp',
-        ReusAddr  => 1,
-        Listen    => 1,
+        LocalAddr  => $testaddr,
+        Proto      => 'tcp',
+        ReuseAddr  => 1,
+        Listen     => 1,
     ) or die "cannot open $testaddr: $!";
     my $csock = $sock->accept();
     while (defined (my $buf = <$csock>)) {
@@ -49,6 +50,9 @@ unless ($pid) {
     close $sock;
     exit 0;
 }
+
+# give the forked server a chance to startup
+sleep 1;
 
 my $memd = Cache::Memcached->new({ servers   => [ $testaddr ] });
 
