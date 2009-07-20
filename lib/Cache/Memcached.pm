@@ -440,6 +440,14 @@ sub set {
     _set("set", @_);
 }
 
+sub append {
+    _set("append", @_);
+}
+
+sub prepend {
+    _set("prepend", @_);
+}
+
 sub _set {
     my $cmdname = shift;
     my Cache::Memcached $self = shift;
@@ -451,11 +459,13 @@ sub _set {
 
     use bytes; # return bytes from length()
 
+    my $app_or_prep = $cmdname eq 'append' || $cmdname eq 'prepend' ? 1 : 0;
     $self->{'stats'}->{$cmdname}++;
     my $flags = 0;
     $key = ref $key ? $key->[1] : $key;
 
     if (ref $val) {
+        die "append or prepend cannot take a reference" if $app_or_prep;
         local $Carp::CarpLevel = 2;
         $val = Storable::nfreeze($val);
         $flags |= F_STORABLE;
@@ -465,7 +475,7 @@ sub _set {
     my $len = length($val);
 
     if ($self->{'compress_threshold'} && $HAVE_ZLIB && $self->{'compress_enable'} &&
-        $len >= $self->{'compress_threshold'}) {
+        $len >= $self->{'compress_threshold'} && !$app_or_prep) {
 
         my $c_val = Compress::Zlib::memGzip($val);
         my $c_len = length($c_val);

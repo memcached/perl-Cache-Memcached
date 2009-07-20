@@ -9,7 +9,7 @@ my $testaddr = "127.0.0.1:11211";
 my $msock = IO::Socket::INET->new(PeerAddr => $testaddr,
                                   Timeout  => 3);
 if ($msock) {
-    plan tests => 13;
+    plan tests => 20;
 } else {
     plan skip_all => "No memcached instance running at $testaddr\n";
     exit 0;
@@ -36,6 +36,14 @@ ok(! $memd->replace("key-noexist", "bogus"), "replace key-noexist properly faile
 ok($memd->delete("key1"), "delete key1");
 ok(! $memd->get("key1"), "get key1 properly failed");
 
+ok(! $memd->append("key-noexist", "bogus"), "append key-noexist properly failed");
+ok(! $memd->prepend("key-noexist", "bogus"), "prepend key-noexist properly failed");
+
+ok($memd->set("key3", "base"), "set key3 to base");
+ok($memd->append("key3", "-end"), "appended -end to key3");
+ok($memd->get("key3", "base-end"), "key3 is base-end");
+ok($memd->prepend("key3", "start-"), "prepended start- to key3");
+ok($memd->get("key3", "start-base-end"), "key3 is base-end");
 
 # also test creating the object with a list rather than a hash-ref
 my $mem2 = Cache::Memcached->new(
