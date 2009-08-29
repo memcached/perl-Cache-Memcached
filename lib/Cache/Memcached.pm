@@ -18,6 +18,7 @@ use Time::HiRes ();
 use String::CRC32;
 use Errno qw( EINPROGRESS EWOULDBLOCK EISCONN );
 use Cache::Memcached::GetParser;
+use Encode ();
 use fields qw{
     debug no_rehash stats compress_threshold compress_enable stat_callback
     readonly select_timeout namespace namespace_len servers active buckets
@@ -547,6 +548,11 @@ sub get {
     # TODO: make a fast path for this?  or just keep using get_multi?
     my $r = $self->get_multi($key);
     my $kval = ref $key ? $key->[1] : $key;
+
+    # key reconstituted from server won't have utf8 on, so turn it off on input
+    # scalar to allow hash lookup to succeed
+    Encode::_utf8_off($kval) if Encode::is_utf8($kval);
+
     return $r->{$kval};
 }
 
