@@ -1,3 +1,9 @@
+	* Fix get() with utf-8 keys  (athomason)
+
+	* "stats malloc" command is gone in 1.4; remove those tests (athomason)
+
+	* Add append/prepend support (dormando)
+	
 	* Fix occasional failure in the 100_flush_bug.t test (Ask Bjørn Hansen)
 
 2009-05-04: version 1.26
