@@ -22,6 +22,8 @@ my $memd = Cache::Memcached->new({
 
 isa_ok($memd, 'Cache::Memcached');
 
+my $memcached_version = $memd->stats('misc')->{hosts}->{$testaddr}->{misc}->{version};
+
 ok($memd->set("key1", "val1"), "set key1 as val1");
 
 is($memd->get("key1"), "val1", "get key1 is val1");
@@ -36,14 +38,18 @@ ok(! $memd->replace("key-noexist", "bogus"), "replace key-noexist properly faile
 ok($memd->delete("key1"), "delete key1");
 ok(! $memd->get("key1"), "get key1 properly failed");
 
-ok(! $memd->append("key-noexist", "bogus"), "append key-noexist properly failed");
-ok(! $memd->prepend("key-noexist", "bogus"), "prepend key-noexist properly failed");
+SKIP: {
+  skip "Only using prepend/append on memcached >= 1.2.4, you have $memcached_version", 7
+     unless $memcached_version ge 1.2.4;  # this will fail horriby testing vZ.X.YY
 
-ok($memd->set("key3", "base"), "set key3 to base");
-ok($memd->append("key3", "-end"), "appended -end to key3");
-ok($memd->get("key3", "base-end"), "key3 is base-end");
-ok($memd->prepend("key3", "start-"), "prepended start- to key3");
-ok($memd->get("key3", "start-base-end"), "key3 is base-end");
+  ok(! $memd->append("key-noexist", "bogus"), "append key-noexist properly failed");
+  ok(! $memd->prepend("key-noexist", "bogus"), "prepend key-noexist properly failed");
+  ok($memd->set("key3", "base"), "set key3 to base");
+  ok($memd->append("key3", "-end"), "appended -end to key3");
+  ok($memd->get("key3", "base-end"), "key3 is base-end");
+  ok($memd->prepend("key3", "start-"), "prepended start- to key3");
+  ok($memd->get("key3", "start-base-end"), "key3 is base-end");
+}
 
 # also test creating the object with a list rather than a hash-ref
 my $mem2 = Cache::Memcached->new(
