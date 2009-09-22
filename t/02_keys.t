@@ -27,12 +27,17 @@ my $memd = Cache::Memcached->new({
 
 isa_ok($memd, 'Cache::Memcached');
 
-my $memcached_version =
-    version->parse(
-      $memd->stats('misc')->{hosts}->{$testaddr}->{misc}->{version}
-    );
+my $memcached_version;
 
-diag("Server version: $memcached_version");
+eval {
+    require version;
+    die "version too old" unless $version::VERSION >= 0.77;
+    $memcached_version =
+        version->parse(
+            $memd->stats('misc')->{hosts}->{$testaddr}->{misc}->{version}
+        );
+    diag("Server version: $memcached_version") if $memcached_version;
+};
 
 ok($memd->set("key1", "val1"), "set key1 as val1");
 
@@ -49,8 +54,10 @@ ok($memd->delete("key1"), "delete key1");
 ok(! $memd->get("key1"), "get key1 properly failed");
 
 SKIP: {
+  skip "Could not parse server version; version.pm 0.77 required", 7
+      unless $memcached_version;
   skip "Only using prepend/append on memcached >= 1.2.4, you have $memcached_version", 7
-     unless $memcached_version >= v1.2.4;  # this will fail horriby testing vZ.X.YY
+      unless $memcached_version && $memcached_version >= v1.2.4;
 
   ok(! $memd->append("key-noexist", "bogus"), "append key-noexist properly failed");
   ok(! $memd->prepend("key-noexist", "bogus"), "prepend key-noexist properly failed");
