@@ -1,3 +1,5 @@
+2009-09-22: version 1.27
+
 	* Fix get() with utf-8 keys  (athomason)
 
 	* "stats malloc" command is gone in 1.4; remove those tests (athomason)
