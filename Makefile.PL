@@ -5,6 +5,7 @@ WriteMakefile( 'NAME' => 'Cache::Memcached',
                    'Storable' => 0,
                    'Time::HiRes' => 0,
                    'String::CRC32' => 0,
+                   'Encode'        => 0, 
                },
                ($] >= 5.005 ?
                 (ABSTRACT_FROM => 'lib/Cache/Memcached.pm',
