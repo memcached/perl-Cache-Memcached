@@ -35,11 +35,12 @@ use constant F_COMPRESS => 2;
 # size savings required before saving compressed value
 use constant COMPRESS_SAVINGS => 0.20; # percent
 
-use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL);
-$VERSION = "1.27";
+use vars qw($VERSION $HAVE_ZLIB $FLAG_NOSIGNAL $HAVE_SOCKET6);
+$VERSION = "1.28";
 
 BEGIN {
     $HAVE_ZLIB = eval "use Compress::Zlib (); 1;";
+    $HAVE_SOCKET6 = eval "use Socket6 qw(AF_INET6 PF_INET6); 1;";
 }
 
 my $HAVE_XS = eval "use Cache::Memcached::GetParserXS; 1;";
@@ -231,7 +232,9 @@ sub sock_to_host { # (host)
     return $cache_sock{$host} if $cache_sock{$host};
 
     my $now = time();
-    my ($ip, $port) = $host =~ /(.*):(\d+)/;
+    my ($ip, $port) = $host =~ /(.*):(\d+)$/;
+    $ip =~ s/[\[\]]//g; # get rid of optional IPv6 brackets
+
     return undef if
         $host_dead{$host} && $host_dead{$host} > $now;
     my $sock;
@@ -244,10 +247,19 @@ sub sock_to_host { # (host)
     {
         # if a preferred IP is known, try that first.
         if ($self && $self->{pref_ip}{$ip}) {
-            socket($sock, PF_INET, SOCK_STREAM, $proto);
-            $sock_map{$sock} = $host;
             my $prefip = $self->{pref_ip}{$ip};
-            $sin = Socket::sockaddr_in($port,Socket::inet_aton($prefip));
+            if ($HAVE_SOCKET6 && index($prefip, ':') != -1) {
+                no strict 'subs';  # for PF_INET6 and AF_INET6, weirdly imported
+                socket($sock, PF_INET6, SOCK_STREAM, $proto);
+                $sock_map{$sock} = $host;
+                $sin = Socket6::pack_sockaddr_in6($port,
+                                                  Socket6::inet_pton(AF_INET6, $prefip));
+            } else {
+                socket($sock, PF_INET, SOCK_STREAM, $proto);
+                $sock_map{$sock} = $host;
+                $sin = Socket::sockaddr_in($port, Socket::inet_aton($prefip));
+            }
+
             if (_connect_sock($sock,$sin,$self->{connect_timeout})) {
                 $connected = 1;
             } else {
@@ -260,11 +272,20 @@ sub sock_to_host { # (host)
 
         # normal path, or fallback path if preferred IP failed
         unless ($connected) {
-            socket($sock, PF_INET, SOCK_STREAM, $proto);
-            $sock_map{$sock} = $host;
-            $sin = Socket::sockaddr_in($port,Socket::inet_aton($ip));
+            if ($HAVE_SOCKET6 && index($ip, ':') != -1) {
+                no strict 'subs';  # for PF_INET6 and AF_INET6, weirdly imported
+                socket($sock, PF_INET6, SOCK_STREAM, $proto);
+                $sock_map{$sock} = $host;
+                $sin = Socket6::pack_sockaddr_in6($port,
+                                                  Socket6::inet_pton(AF_INET6, $ip));
+            } else {
+                socket($sock, PF_INET, SOCK_STREAM, $proto);
+                $sock_map{$sock} = $host;
+                $sin = Socket::sockaddr_in($port, Socket::inet_aton($ip));
+            }
+
             my $timeout = $self ? $self->{connect_timeout} : 0.25;
-            unless (_connect_sock($sock,$sin,$timeout)) {
+            unless (_connect_sock($sock, $sin, $timeout)) {
                 my $cb = $self ? $self->{cb_connect_fail} : undef;
                 $cb->($ip) if $cb;
                 return _dead_sock($sock, undef, 20 + int(rand(10)));
