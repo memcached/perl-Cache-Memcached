@@ -233,7 +233,9 @@ sub sock_to_host { # (host)
 
     my $now = time();
     my ($ip, $port) = $host =~ /(.*):(\d+)$/;
-    $ip =~ s/[\[\]]//g; # get rid of optional IPv6 brackets
+    if (defined($ip)) {
+        $ip =~ s/[\[\]]//g;  # get rid of optional IPv6 brackets
+    }
 
     return undef if
         $host_dead{$host} && $host_dead{$host} > $now;

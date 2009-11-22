@@ -1,3 +1,6 @@
+	* quell ipv6-related warning
+	  https://rt.cpan.org/Ticket/Display.html?id=51761
+	
 2009-10-21: version 1.28
 
 	* IPv6 support (https://rt.cpan.org/Ticket/Display.html?id=50577)
