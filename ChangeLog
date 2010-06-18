@@ -1,3 +1,6 @@
+
+    * fix buck2sock confusion (Eddie Canales)
+
 	* quell ipv6-related warning
 	  https://rt.cpan.org/Ticket/Display.html?id=51761
 	
