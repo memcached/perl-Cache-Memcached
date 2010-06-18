@@ -6,9 +6,15 @@ use Cache::Memcached;
 use IO::Socket::INET;
 use Time::HiRes;
 
-my $testaddr = "192.0.2.1:11211";
-
-plan tests => 2;
+my $testaddr = "127.0.0.1:11211";
+my $msock = IO::Socket::INET->new(PeerAddr => $testaddr,
+                                  Timeout  => 3);
+if ($msock) {
+    plan tests => 2;
+} else {
+    plan skip_all => "No memcached instance running at $testaddr\n";
+    exit 0;
+}
 
 my $memd = Cache::Memcached->new({
     servers   => [ $testaddr ],
