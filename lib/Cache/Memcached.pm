@@ -889,6 +889,7 @@ sub stats {
     my @hosts = @{$self->{'buckets'}};
   HOST: foreach my $host (@hosts) {
         my $sock = $self->sock_to_host($host);
+        next HOST unless $sock;
       TYPE: foreach my $typename (grep !/^self$/, @$types) {
             my $type = $typename eq 'misc' ? "" : " $typename";
             my $lines = _write_and_read($self, $sock, "stats$type\r\n", sub {
@@ -941,6 +942,7 @@ sub stats_reset {
 
   HOST: foreach my $host (@{$self->{'buckets'}}) {
         my $sock = $self->sock_to_host($host);
+        next HOST unless $sock;
         my $ok = _write_and_read($self, $sock, "stats reset");
         unless (defined $ok && $ok eq "RESET\r\n") {
             $self->_dead_sock($sock);

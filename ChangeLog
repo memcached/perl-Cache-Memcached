@@ -1,3 +1,4 @@
+    * fix warnings spew if calling stats on a down server
 
     * fix buck2sock confusion (Eddie Canales)
 
