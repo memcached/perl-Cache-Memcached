@@ -1,3 +1,6 @@
+	* Fix t/05_reconnect_timeout.t to not fail on networks that fast-reject
+	  TEST-NET-1 https://rt.cpan.org/Ticket/Display.html?id=74500
+
 	* Fix warning about undefined value in GetParser.pm (kost@ropnet.ru)
 	    https://rt.cpan.org/Ticket/Display.html?id=31067
 
