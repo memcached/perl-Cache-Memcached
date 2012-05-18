@@ -1,3 +1,6 @@
+	* Add documentation of connect_timeout and select_timeout
+	    https://rt.cpan.org/Ticket/Display.html?id=30904
+
 2010-06-17: version 1.29
 
 	* fix warnings spew if calling stats on a down server
