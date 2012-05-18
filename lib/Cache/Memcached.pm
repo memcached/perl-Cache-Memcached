@@ -1021,6 +1021,10 @@ Use C<namespace> to prefix all keys with the provided namespace value.
 That is, if you set namespace to "app1:" and later do a set of "foo"
 to "bar", memcached is actually seeing you set "app1:foo" to "bar".
 
+Use C<connect_timeout> and C<select_timeout> to set connection and
+polling timeouts. The C<connect_timeout> defaults to .25 second, and
+the C<select_timeout> defaults to 1 second.
+
 The other useful key is C<debug>, which when set to true will produce
 diagnostics on STDERR.
 
@@ -1051,6 +1055,14 @@ Sets the C<no_rehash> flag.  See C<new> constructor for more information.
 =item C<set_compress_threshold>
 
 Sets the compression threshold. See C<new> constructor for more information.
+
+=item C<set_connect_timeout>
+
+Sets the connect timeout. See C<new> constructor for more information.
+
+=item C<set_select_timeout>
+
+Sets the select timeout. See C<new> constructor for more information.
 
 =item C<enable_compress>
 
