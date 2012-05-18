@@ -1,8 +1,8 @@
 2010-06-17: version 1.29
 
-    * fix warnings spew if calling stats on a down server
+	* fix warnings spew if calling stats on a down server
 
-    * fix buck2sock confusion (Eddie Canales)
+	* fix buck2sock confusion (Eddie Canales)
 
 	* quell ipv6-related warning
 	  https://rt.cpan.org/Ticket/Display.html?id=51761
