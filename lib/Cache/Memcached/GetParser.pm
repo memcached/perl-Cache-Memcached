@@ -59,7 +59,7 @@ sub parse_from_sock {
                    128*1024, $self->[OFFSET]);
     return 0
         if !defined($res) and $!==EWOULDBLOCK;
-    if ($res == 0) {
+    if (!defined($res) || $res == 0) {
         $self->[ON_ITEM] = undef;
         return -1;
     }

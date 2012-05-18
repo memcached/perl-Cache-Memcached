@@ -1,3 +1,6 @@
+	* Fix warning about undefined value in GetParser.pm (kost@ropnet.ru)
+	    https://rt.cpan.org/Ticket/Display.html?id=31067
+
 	* Add documentation of connect_timeout and select_timeout
 	    https://rt.cpan.org/Ticket/Display.html?id=30904
 
