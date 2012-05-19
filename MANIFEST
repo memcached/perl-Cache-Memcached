@@ -13,3 +13,4 @@ t/04_noreply.t
 t/05_reconnect_timeout.t
 t/06_utf8_key.t
 t/100_flush_bug.t
+t/101_multiple_clients.t
