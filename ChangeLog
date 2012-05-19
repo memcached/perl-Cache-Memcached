@@ -1,3 +1,7 @@
+	* Fix buck2sock corruption that causes errors like
+	  "No map found matching for GLOB" or "No sock found for" (hachi@cpan.org)
+	    https://rt.cpan.org/Ticket/Display.html?id=62872
+
 	* Fix t/05_reconnect_timeout.t to not fail on networks that fast-reject
 	  TEST-NET-1 https://rt.cpan.org/Ticket/Display.html?id=74500
 
