@@ -6,6 +6,14 @@ use Cache::Memcached;
 use IO::Socket::INET;
 use Time::HiRes qw(gettimeofday tv_interval);
 
+##############################################################################
+# This is connecting to TEST-NET-1 on purpose, because that's a space that is
+# guaranteed by RFC to have no hosts in it. Sometimes we still get fast RST
+# frames though, so we have to check before we trust it.
+#
+# DO NOT FIX THIS CODE TO CHECK AND MAKE SURE THE HOST IS UP. IT IS SUPPOSED
+# TO BE DOWN. :) --hachi
+##############################################################################
 my $testaddr = "192.0.2.1:11211";
 
 my $stime = [gettimeofday];
